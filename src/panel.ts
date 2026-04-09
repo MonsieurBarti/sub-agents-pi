@@ -21,6 +21,17 @@ export interface PanelTUI {
  */
 export type ConfirmFn = (title: string, message: string) => Promise<boolean>;
 
+/**
+ * Callback used to pull keyboard focus back to this panel's overlay after a
+ * modal dialog dismisses. Necessary because pi's `ctx.ui.confirm` swaps the
+ * editor with a selector component and, on dismiss, restores focus to the
+ * editor — not to our overlay, which is still on the overlay stack but no
+ * longer receiving key events. In production this is bound to the
+ * OverlayHandle.focus() returned by `ctx.ui.custom`'s onHandle callback.
+ * Optional for backward compatibility with tests that don't need it.
+ */
+export type RefocusFn = () => void;
+
 export class SubagentPanel implements Component {
 	private selectedIndex = 0;
 	private zoomed = false;
@@ -34,6 +45,7 @@ export class SubagentPanel implements Component {
 		private theme: Theme,
 		private done: () => void,
 		private confirm: ConfirmFn,
+		private refocus: RefocusFn = () => {},
 	) {
 		// Pool changes arrive asynchronously from background sub-agents. The
 		// TUI only renders on input by default, so we must explicitly request
@@ -111,6 +123,12 @@ export class SubagentPanel implements Component {
 				})
 				.finally(() => {
 					this.confirmInFlight = false;
+					// pi's confirm dialog steals focus from our overlay by
+					// swapping the editor. On dismiss it restores focus to
+					// the editor, not to us — so we have to explicitly pull
+					// focus back or the panel becomes unresponsive while
+					// still visible. See ConfirmFn/RefocusFn docs above.
+					this.refocus();
 					this.tui.requestRender();
 				});
 			return;

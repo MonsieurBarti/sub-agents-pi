@@ -49,6 +49,7 @@ describe("SubagentPanel", () => {
 	let panel: SubagentPanel;
 	let tui: { requestRender: ReturnType<typeof vi.fn> };
 	let confirm: ReturnType<typeof vi.fn>;
+	let refocus: ReturnType<typeof vi.fn>;
 
 	beforeEach(() => {
 		pool = new JobPool();
@@ -56,7 +57,8 @@ describe("SubagentPanel", () => {
 		tui = { requestRender: vi.fn() };
 		// Default: confirm always accepts (explicit per-test override when needed)
 		confirm = vi.fn().mockResolvedValue(true);
-		panel = new SubagentPanel(pool, tui, fakeTheme as unknown as Theme, done, confirm);
+		refocus = vi.fn();
+		panel = new SubagentPanel(pool, tui, fakeTheme as unknown as Theme, done, confirm, refocus);
 	});
 
 	describe("handleInput", () => {
@@ -132,6 +134,21 @@ describe("SubagentPanel", () => {
 			expect(abort).toHaveBeenCalled();
 		});
 
+		it("reclaims focus after the confirm dialog resolves", async () => {
+			// pi's ctx.ui.confirm is implemented by swapping the editor for a
+			// selector component, which steals focus from our overlay. When the
+			// selector dismisses, pi restores focus to the editor (not our
+			// overlay), leaving the panel visible but unresponsive. The panel
+			// must call the refocus callback to pull focus back to itself.
+			pool.add(makeJob());
+
+			panel.handleInput("k");
+			await Promise.resolve();
+			await Promise.resolve();
+
+			expect(refocus).toHaveBeenCalled();
+		});
+
 		it("does NOT kill a running job if the user declines confirmation", async () => {
 			confirm.mockResolvedValueOnce(false);
 			const abort = vi.fn();
@@ -142,6 +159,9 @@ describe("SubagentPanel", () => {
 			await Promise.resolve();
 			expect(confirm).toHaveBeenCalled();
 			expect(abort).not.toHaveBeenCalled();
+			// Must still refocus even if the user said No, otherwise the panel
+			// is stranded unresponsive behind the dismissed dialog.
+			expect(refocus).toHaveBeenCalled();
 		});
 
 		it("does not prompt or kill for non-running jobs on k", async () => {

@@ -96,14 +96,29 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	pi.registerShortcut("ctrl+shift+s", {
 		description: "Open the sub-agents panel",
 		handler: async (ctx) => {
+			// Capture the overlay handle via onHandle so the panel can pull
+			// focus back to itself after ctx.ui.confirm dismisses. pi's
+			// confirm dialog is implemented as an editor-swap rather than a
+			// stacking overlay, so its dismiss restores focus to the editor
+			// instead of to our panel overlay. Without this, the panel
+			// becomes visible-but-unresponsive after any kill confirmation.
+			let panelHandle: { focus: () => void } | undefined;
 			await ctx.ui.custom<void>(
 				(tui, theme, _kb, done) =>
-					new SubagentPanel(pool, tui, theme, done, (title, message) =>
-						ctx.ui.confirm(title, message),
+					new SubagentPanel(
+						pool,
+						tui,
+						theme,
+						done,
+						(title, message) => ctx.ui.confirm(title, message),
+						() => panelHandle?.focus(),
 					),
 				{
 					overlay: true,
 					overlayOptions: { anchor: "center", width: "80%", maxHeight: "75%" },
+					onHandle: (handle) => {
+						panelHandle = handle;
+					},
 				},
 			);
 		},
