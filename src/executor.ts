@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { Message } from "@mariozechner/pi-ai";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
@@ -24,7 +25,10 @@ export function createExecutor(options: CreateExecutorOptions) {
 			ctx: ExtensionContext,
 		): Promise<AgentToolResult<SubagentDetails>> {
 			const controller = new AbortController();
-			const combinedSignal = combineSignals(signal, controller.signal);
+			const { signal: combinedSignal, dispose: disposeSignal } = combineSignals(
+				signal,
+				controller.signal,
+			);
 
 			const details: SubagentDetails = {
 				id,
@@ -61,31 +65,47 @@ export function createExecutor(options: CreateExecutorOptions) {
 
 			pool.add(job);
 
-			const { args, tempDir } = buildPiArgs({
-				task: params.task,
-				systemPrompt: params.system_prompt,
-				model: params.model,
-				thinking: params.thinking,
-				tools: params.tools,
-			});
+			// Validate cwd before we try to spawn — gives a clear error path
+			// instead of a mystery "exited with code 1".
+			if (!fs.existsSync(details.cwd)) {
+				details.status = "failed";
+				details.endedAt = Date.now();
+				details.error = `cwd does not exist: ${details.cwd}`;
+				pool.update(id, { status: "failed", endedAt: details.endedAt });
+				disposeSignal();
+				return {
+					content: [{ type: "text", text: details.error }],
+					details,
+				};
+			}
 
-			// Throttle updates
-			let lastUpdate = 0;
-			const throttleMs = 50;
-			const fireUpdate = () => {
-				const now = Date.now();
-				if (now - lastUpdate >= throttleMs) {
-					lastUpdate = now;
-					onUpdate?.({
-						content: [{ type: "text", text: getFinalOutput(details.messages) || "(running...)" }],
-						details,
-					});
-				}
-			};
-
+			let tempDir: string | null = null;
 			try {
+				const built = buildPiArgs({
+					task: params.task,
+					systemPrompt: params.system_prompt,
+					model: params.model,
+					thinking: params.thinking,
+					tools: params.tools,
+				});
+				tempDir = built.tempDir;
+
+				// Throttle updates
+				let lastUpdate = 0;
+				const throttleMs = 50;
+				const fireUpdate = () => {
+					const now = Date.now();
+					if (now - lastUpdate >= throttleMs) {
+						lastUpdate = now;
+						onUpdate?.({
+							content: [{ type: "text", text: getFinalOutput(details.messages) || "(running...)" }],
+							details,
+						});
+					}
+				};
+
 				const result = await runChildPi({
-					args,
+					args: built.args,
 					cwd: details.cwd,
 					signal: combinedSignal,
 					onEvent: (evt) => handleEvent(evt as Record<string, unknown>, details, fireUpdate),
@@ -112,13 +132,20 @@ export function createExecutor(options: CreateExecutorOptions) {
 					details,
 				};
 			} catch (err) {
+				// Convert any error (spawn ENOENT, buildPiArgs fs throw, etc.) into a
+				// structured failure so the LLM sees it as a tool result, not an
+				// unhandled rejection.
 				details.status = "failed";
 				details.endedAt = Date.now();
 				details.error = err instanceof Error ? err.message : String(err);
 				pool.update(id, { status: "failed", endedAt: details.endedAt });
-				throw err;
+				return {
+					content: [{ type: "text", text: details.error }],
+					details,
+				};
 			} finally {
 				cleanupTempDir(tempDir);
+				disposeSignal();
 			}
 		},
 	};
@@ -215,11 +242,31 @@ function getFinalOutput(messages: Message[]): string {
 	return "";
 }
 
-function combineSignals(a: AbortSignal | undefined, b: AbortSignal): AbortSignal {
-	if (!a) return b;
+/**
+ * Combine two AbortSignals into one. Returns the combined signal plus a
+ * `dispose` function that removes any listeners we installed on the caller's
+ * signal. Always call `dispose()` in a `finally` block to prevent listener
+ * accumulation on long-lived parent signals (e.g. session-scoped abort).
+ */
+function combineSignals(
+	a: AbortSignal | undefined,
+	b: AbortSignal,
+): { signal: AbortSignal; dispose: () => void } {
+	if (!a) return { signal: b, dispose: () => {} };
+
 	const controller = new AbortController();
 	if (a.aborted || b.aborted) controller.abort();
-	a.addEventListener("abort", () => controller.abort(), { once: true });
-	b.addEventListener("abort", () => controller.abort(), { once: true });
-	return controller.signal;
+
+	const onAAbort = () => controller.abort();
+	const onBAbort = () => controller.abort();
+	a.addEventListener("abort", onAAbort, { once: true });
+	b.addEventListener("abort", onBAbort, { once: true });
+
+	return {
+		signal: controller.signal,
+		dispose: () => {
+			a.removeEventListener("abort", onAAbort);
+			b.removeEventListener("abort", onBAbort);
+		},
+	};
 }

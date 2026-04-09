@@ -91,6 +91,27 @@ describe("pi-args", () => {
 			const taskRef = result.args.find((a) => typeof a === "string" && a.startsWith("@"));
 			expect(taskRef).toBeDefined();
 		});
+
+		it("cleans up temp dir when writeFileSync throws", () => {
+			const writeMock = vi.mocked(fs.writeFileSync);
+			const rmMock = vi.mocked(fs.rmSync);
+			writeMock.mockImplementationOnce(() => {
+				throw new Error("EACCES");
+			});
+
+			expect(() =>
+				buildPiArgs({
+					task: "t",
+					systemPrompt: "You are a scout.",
+				}),
+			).toThrow(/EACCES/);
+
+			// The tempDir that mkdtempSync returned must be cleaned up on failure.
+			expect(rmMock).toHaveBeenCalledWith(
+				expect.stringContaining("pi-subagent-test"),
+				expect.objectContaining({ recursive: true, force: true }),
+			);
+		});
 	});
 
 	describe("cleanupTempDir", () => {

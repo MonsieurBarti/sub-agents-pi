@@ -129,4 +129,63 @@ describe("executor", () => {
 		expect(result.details?.status).toBe("aborted");
 		expect(pool.get("test-6")?.status).toBe("aborted");
 	});
+
+	it("returns structured failure when cwd does not exist", async () => {
+		const result = await executor.execute(
+			"test-cwd",
+			{
+				task: "t",
+				system_prompt: "sp",
+				cwd: "/nonexistent/nope/nada",
+			},
+			undefined,
+			undefined,
+			{ cwd: "/tmp", hasUI: false } as ExtensionContext,
+		);
+
+		expect(result.details?.status).toBe("failed");
+		expect(result.details?.error).toMatch(/cwd/i);
+		expect(result.details?.error).toContain("/nonexistent/nope/nada");
+		expect(pool.get("test-cwd")?.status).toBe("failed");
+	});
+
+	it("returns structured failure when spawn errors (does not throw)", async () => {
+		const badExecutor = createExecutor({
+			pool,
+			piCommandOverride: { command: "/absolutely/nonexistent/binary", baseArgs: [] },
+		});
+
+		const result = await badExecutor.execute(
+			"test-spawn-err",
+			{ task: "t", system_prompt: "sp" },
+			undefined,
+			undefined,
+			{ cwd: "/tmp", hasUI: false } as ExtensionContext,
+		);
+
+		expect(result.details?.status).toBe("failed");
+		expect(result.details?.error).toBeDefined();
+		expect(pool.get("test-spawn-err")?.status).toBe("failed");
+	});
+
+	it("removes abort listener from caller signal after execute resolves", async () => {
+		const controller = new AbortController();
+		const parentSignal = controller.signal;
+		const addSpy = vi.spyOn(parentSignal, "addEventListener");
+		const removeSpy = vi.spyOn(parentSignal, "removeEventListener");
+
+		await executor.execute(
+			"test-leak",
+			{ task: "t", system_prompt: "sp" },
+			parentSignal,
+			undefined,
+			{ cwd: "/tmp", hasUI: false } as ExtensionContext,
+		);
+
+		// For every abort listener we add to the parent signal, we must remove it.
+		const abortAdds = addSpy.mock.calls.filter((c) => c[0] === "abort").length;
+		const abortRemoves = removeSpy.mock.calls.filter((c) => c[0] === "abort").length;
+		expect(abortAdds).toBeGreaterThan(0);
+		expect(abortRemoves).toBe(abortAdds);
+	});
 });
