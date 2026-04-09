@@ -80,13 +80,15 @@ pi config  # enable/disable individual extensions, skills, prompts, themes
 Ask your LLM to delegate work:
 
 ```
-Use a sub-agent with system_prompt "You are a fast codebase scout. Return file:line refs with one-line summaries." and task "Find all JWT parsing code" and model "claude-haiku-4-5" and label "jwt-scout"
+Use the tff-subagent tool with system_prompt "You are a fast codebase scout. Return file:line refs with one-line summaries." and task "Find all JWT parsing code" and model "claude-haiku-4-5" and label "jwt-scout"
 ```
 
-The `subagent` tool spawns a child process that runs independently. You'll see:
+The `tff-subagent` tool spawns a child process that runs independently. You'll see:
 - **Scrollback row** — Compact status with live tool calls, final summary after completion
 - **Bottom widget** — Counter showing running/done sub-agents (`🧬 sub-agents  2 running · 1 done`)
 - **Overlay panel** — Rich interactive view opened with `alt+s`
+
+> The tool is namespaced as `tff-subagent` so it can coexist with other pi packages (such as `pi-superpowers-plus`) that also ship a `subagent` tool. The user-facing display label still shows as "subagent" / your custom `label` — only the LLM-facing tool id is prefixed.
 
 ### Opening the spy panel
 
@@ -116,7 +118,7 @@ The panel shows a two-pane view: list of sub-agents on the left, live detail on 
 Create a sandboxed scout that can only read and search:
 
 ```
-Use a sub-agent with system_prompt "You are a read-only scout. Find all authentication-related code and return file:line refs." and task "Map the auth surface area" and model "claude-haiku-4-5" and tools ["read", "grep", "find", "ls"] and label "auth-scout"
+Use the tff-subagent tool with system_prompt "You are a read-only scout. Find all authentication-related code and return file:line refs." and task "Map the auth surface area" and model "claude-haiku-4-5" and tools ["read", "grep", "find", "ls"] and label "auth-scout"
 ```
 
 The sub-agent won't be able to write files, edit code, or run bash commands — perfect for safe reconnaissance.

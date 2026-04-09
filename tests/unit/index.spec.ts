@@ -30,10 +30,10 @@ describe("extension registration", () => {
 		expect(() => registerExtension(pi)).not.toThrow();
 	});
 
-	it("registers the subagent tool at the top level", () => {
+	it("registers the tff-subagent tool at the top level", () => {
 		const pi = makeMockPi();
 		registerExtension(pi);
-		expect(pi.registerTool).toHaveBeenCalledWith(expect.objectContaining({ name: "subagent" }));
+		expect(pi.registerTool).toHaveBeenCalledWith(expect.objectContaining({ name: "tff-subagent" }));
 	});
 
 	it("registers the panel shortcut at the top level", () => {

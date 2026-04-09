@@ -50,8 +50,12 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	// -----------------------------------------------------------------
 
 	const tool = defineTool<typeof SubagentParams, SubagentDetails>({
-		name: "subagent",
-		label: "Subagent",
+		// Namespaced to avoid collisions with other pi packages that may also
+		// ship a tool called "subagent" (e.g. pi-superpowers-plus). The LLM
+		// calls this by its full name; the user-facing display is controlled
+		// by the `label` parameter per call.
+		name: "tff-subagent",
+		label: "TFF Subagent",
 		description:
 			"Delegate a task to an isolated sub-agent running in its own pi process. " +
 			"Define the identity (system_prompt), model, and thinking level per call. " +

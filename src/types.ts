@@ -103,4 +103,6 @@ export interface SubagentJob {
 // Constants
 // ---------------------------------------------------------------------
 
-export const WIDGET_KEY = "subagents";
+// Namespaced registry key for the bottom widget, matching the tff-subagent
+// tool name. Avoids collisions with other pi packages.
+export const WIDGET_KEY = "tff-subagents";
