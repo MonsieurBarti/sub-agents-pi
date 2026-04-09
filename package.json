@@ -1,11 +1,15 @@
 {
 	"name": "@the-forge-flow/sub-agents-pi",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "PI extension for spawning isolated sub-agents with live TUI spying",
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
-	"files": ["dist", "README.md", "LICENSE"],
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE"
+	],
 	"scripts": {
 		"build": "tsc -p tsconfig.build.json",
 		"test": "vitest run",
@@ -39,7 +43,14 @@
 	"engines": {
 		"node": ">=20.0.0"
 	},
-	"keywords": ["pi-package", "pi", "extension", "subagents", "ai", "agents"],
+	"keywords": [
+		"pi-package",
+		"pi",
+		"extension",
+		"subagents",
+		"ai",
+		"agents"
+	],
 	"license": "MIT",
 	"repository": {
 		"type": "git",
@@ -49,6 +60,8 @@
 		"access": "public"
 	},
 	"pi": {
-		"extensions": ["./dist/index.js"]
+		"extensions": [
+			"./dist/index.js"
+		]
 	}
 }
