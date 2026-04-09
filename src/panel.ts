@@ -6,6 +6,15 @@ import { formatDuration, formatToolCall, formatUsageStats } from "./formatters";
 import type { JobPool } from "./job-pool";
 import type { SubagentJob } from "./types";
 
+/**
+ * Minimal slice of the pi-tui TUI interface we depend on. Using a narrow
+ * structural type keeps tests simple (no need to construct a real TUI) and
+ * documents the only capability we require from the host.
+ */
+export interface PanelTUI {
+	requestRender(): void;
+}
+
 export class SubagentPanel implements Component {
 	private selectedIndex = 0;
 	private zoomed = false;
@@ -13,10 +22,14 @@ export class SubagentPanel implements Component {
 
 	constructor(
 		private pool: JobPool,
+		private tui: PanelTUI,
 		private theme: Theme,
 		private done: () => void,
 	) {
-		this.handler = () => this.invalidate();
+		// Pool changes arrive asynchronously from background sub-agents. The
+		// TUI only renders on input by default, so we must explicitly request
+		// a render to reflect state changes while the panel is open.
+		this.handler = () => this.tui.requestRender();
 		this.pool.on("change", this.handler);
 	}
 
@@ -35,7 +48,7 @@ export class SubagentPanel implements Component {
 		if (matchesKey(data, "escape") || matchesKey(data, "ctrl+c")) {
 			if (this.zoomed) {
 				this.zoomed = false;
-				this.invalidate();
+				this.tui.requestRender();
 				return;
 			}
 			this.done();
@@ -44,19 +57,19 @@ export class SubagentPanel implements Component {
 
 		if (matchesKey(data, "up")) {
 			this.selectedIndex = Math.max(0, this.selectedIndex - 1);
-			this.invalidate();
+			this.tui.requestRender();
 			return;
 		}
 
 		if (matchesKey(data, "down")) {
 			this.selectedIndex = Math.min(jobs.length - 1, this.selectedIndex + 1);
-			this.invalidate();
+			this.tui.requestRender();
 			return;
 		}
 
 		if (matchesKey(data, "return")) {
 			this.zoomed = !this.zoomed;
-			this.invalidate();
+			this.tui.requestRender();
 			return;
 		}
 
@@ -225,7 +238,9 @@ export class SubagentPanel implements Component {
 	}
 
 	invalidate(): void {
-		// Base Component class handles this - stub for test spying
+		// Component interface requires this method. It exists to drop any
+		// cached rendering state (we hold none). Repainting is triggered
+		// separately via this.tui.requestRender().
 	}
 
 	dispose(): void {

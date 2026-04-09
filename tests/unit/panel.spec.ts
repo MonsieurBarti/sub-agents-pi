@@ -47,11 +47,13 @@ describe("SubagentPanel", () => {
 	let pool: JobPool;
 	let done: ReturnType<typeof vi.fn>;
 	let panel: SubagentPanel;
+	let tui: { requestRender: ReturnType<typeof vi.fn> };
 
 	beforeEach(() => {
 		pool = new JobPool();
 		done = vi.fn();
-		panel = new SubagentPanel(pool, fakeTheme as unknown as Theme, done);
+		tui = { requestRender: vi.fn() };
+		panel = new SubagentPanel(pool, tui, fakeTheme as unknown as Theme, done);
 	});
 
 	describe("handleInput", () => {
@@ -158,21 +160,18 @@ describe("SubagentPanel", () => {
 	});
 
 	describe("pool subscription", () => {
-		it("updates on pool change", () => {
-			const invalidateSpy = vi.spyOn(panel, "invalidate");
-
+		it("requests a render on pool change", () => {
 			pool.add(makeJob());
 
-			expect(invalidateSpy).toHaveBeenCalled();
+			expect(tui.requestRender).toHaveBeenCalled();
 		});
 
 		it("unsubscribes on dispose", () => {
-			const invalidateSpy = vi.spyOn(panel, "invalidate");
-
 			panel.dispose();
+			tui.requestRender.mockClear();
 			pool.add(makeJob());
 
-			expect(invalidateSpy).not.toHaveBeenCalled();
+			expect(tui.requestRender).not.toHaveBeenCalled();
 		});
 	});
 });
