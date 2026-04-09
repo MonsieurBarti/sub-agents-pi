@@ -6,6 +6,7 @@ export interface RunChildPiOptions {
 	cwd: string;
 	signal?: AbortSignal;
 	onEvent: (event: unknown) => void;
+	commandOverride?: { command: string; baseArgs: string[] };
 }
 
 export interface RunChildPiResult {
@@ -31,8 +32,8 @@ function getPiCommand(): { command: string; baseArgs: string[] } {
 }
 
 export async function runChildPi(options: RunChildPiOptions): Promise<RunChildPiResult> {
-	const { args, cwd, signal, onEvent } = options;
-	const { command, baseArgs } = getPiCommand();
+	const { args, cwd, signal, onEvent, commandOverride } = options;
+	const { command, baseArgs } = commandOverride ?? getPiCommand();
 
 	return new Promise((resolve) => {
 		const proc = spawn(command, [...baseArgs, ...args], {
