@@ -1,0 +1,54 @@
+{
+	"name": "@the-forge-flow/sub-agents-pi",
+	"version": "0.1.0",
+	"description": "PI extension for spawning isolated sub-agents with live TUI spying",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"files": ["dist", "README.md", "LICENSE"],
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
+		"lint": "biome lint .",
+		"lint:fix": "biome lint . --write",
+		"format": "biome format .",
+		"format:fix": "biome format . --write",
+		"check": "biome check .",
+		"check:fix": "biome check . --write",
+		"typecheck": "tsc --noEmit",
+		"prepare": "lefthook install || true"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^1.9.4",
+		"@commitlint/cli": "^19.0.0",
+		"@commitlint/config-conventional": "^19.0.0",
+		"@sinclair/typebox": "^0.34.0",
+		"@types/node": "^22.0.0",
+		"lefthook": "^2.1.5",
+		"typescript": "^5.7.0",
+		"vitest": "^2.1.0"
+	},
+	"peerDependencies": {
+		"@mariozechner/pi-coding-agent": "*",
+		"@mariozechner/pi-ai": "*",
+		"@mariozechner/pi-tui": "*",
+		"@sinclair/typebox": "*"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"keywords": ["pi-package", "pi", "extension", "subagents", "ai", "agents"],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/MonsieurBarti/sub-agents-pi.git"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"pi": {
+		"extensions": ["./dist/index.js"]
+	}
+}
