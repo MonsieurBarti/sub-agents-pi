@@ -80,17 +80,19 @@ pi config  # enable/disable individual extensions, skills, prompts, themes
 Ask your LLM to delegate work:
 
 ```
-Use a sub-agent with system_prompt "You are a fast codebase scout. Return file:line refs with one-line summaries." and task "Find all JWT parsing code" and model "claude-haiku-4-5" and label "jwt-scout"
+Use the tff-subagent tool with system_prompt "You are a fast codebase scout. Return file:line refs with one-line summaries." and task "Find all JWT parsing code" and model "claude-haiku-4-5" and label "jwt-scout"
 ```
 
-The `subagent` tool spawns a child process that runs independently. You'll see:
+The `tff-subagent` tool spawns a child process that runs independently. You'll see:
 - **Scrollback row** — Compact status with live tool calls, final summary after completion
 - **Bottom widget** — Counter showing running/done sub-agents (`🧬 sub-agents  2 running · 1 done`)
-- **Overlay panel** — Rich interactive view opened with `alt+s`
+- **Overlay panel** — Rich interactive view opened with `ctrl+shift+s`
+
+> The tool is namespaced as `tff-subagent` so it can coexist with other pi packages (such as `pi-superpowers-plus`) that also ship a `subagent` tool. The user-facing display label still shows as "subagent" / your custom `label` — only the LLM-facing tool id is prefixed.
 
 ### Opening the spy panel
 
-Press `alt+s` to open the interactive sub-agents panel:
+Press `ctrl+shift+s` to open the interactive sub-agents panel:
 
 - **↑↓** — Navigate between sub-agents
 - **Enter** — Zoom into selected sub-agent's detail view
@@ -116,10 +118,32 @@ The panel shows a two-pane view: list of sub-agents on the left, live detail on 
 Create a sandboxed scout that can only read and search:
 
 ```
-Use a sub-agent with system_prompt "You are a read-only scout. Find all authentication-related code and return file:line refs." and task "Map the auth surface area" and model "claude-haiku-4-5" and tools ["read", "grep", "find", "ls"] and label "auth-scout"
+Use the tff-subagent tool with system_prompt "You are a read-only scout. Find all authentication-related code and return file:line refs." and task "Map the auth surface area" and model "claude-haiku-4-5" and tools ["read", "grep", "find", "ls"] and label "auth-scout"
 ```
 
 The sub-agent won't be able to write files, edit code, or run bash commands — perfect for safe reconnaissance.
+
+## 🛡 Safety guardrails
+
+**Nested sub-agents are disabled.** Only the top-level pi can spawn sub-agents — sub-agents cannot themselves call the `subagent` tool. This is enforced at two layers:
+
+1. **Registration-level:** when a child pi loads this extension, it detects `PI_SUBAGENT_DEPTH ≥ 1` and skips `registerTool` / `registerShortcut` entirely. The sub-agent's LLM never sees `subagent` as an available tool.
+2. **Executor-level (fallback):** `MAX_SUBAGENT_DEPTH = 1` means any invocation from inside a sub-agent process returns a structured failure: "Nested sub-agent spawning is disabled." This only fires if the tool is somehow invoked programmatically, bypassing extension registration.
+
+This prevents fork-bomb scenarios from confused or hostile prompts, and keeps reasoning about sub-agent lifecycles simple (the pool only ever holds a flat level of jobs).
+
+**cwd validation.** If you pass a `cwd` that doesn't exist on disk, the tool returns `"cwd does not exist: <path>"` before touching `spawn()`, rather than producing a mystery "exited with code 1".
+
+**Kill confirmation.** Pressing `k` in the overlay panel shows a confirmation dialog via `ctx.ui.confirm` — a stray keystroke won't terminate a running sub-agent mid-turn.
+
+**Resource safety.** Temp directories for system-prompt files are cleaned up even when `writeFileSync` throws mid-build. SIGKILL escalation timers are cleared on clean exit. Abort listeners on parent signals are tracked and removed to prevent accumulation across many sub-agent calls.
+
+## 🔌 Environment variables
+
+| Var | Purpose | Default |
+|-----|---------|---------|
+| `PI_BIN` | Absolute path to the pi binary to spawn for children. Overrides auto-detection. Useful for non-standard installs (compiled binaries, bun-compiled single-file, wrapper shims). | auto-detected from `process.argv[1]` / `process.execPath` / `PATH` |
+| `PI_SUBAGENT_DEPTH` | Set by the extension on each spawned child (`parent_depth + 1`). When present in a child pi, the extension skips tool registration entirely. The executor also refuses to spawn when depth ≥ 1 as a fallback. | unset at the top level |
 
 ## 🎨 TUI Overview
 
@@ -143,14 +167,14 @@ Press `Ctrl+O` to expand and see the full transcript, all tool calls, and the fi
 Persistent counter below the editor:
 
 ```
-🧬 sub-agents  2 running · 1 done    [alt+s] open panel
+🧬 sub-agents  2 running · 1 done    [ctrl+shift+s] open panel
 ```
 
 Auto-clears 30 seconds after all sub-agents finish.
 
 ### Overlay panel
 
-Rich interactive view opened with `alt+s`:
+Rich interactive view opened with `ctrl+shift+s`:
 
 ```
 ╭─ 🧬 Sub-agents ──────────────────────────────────────────────╮

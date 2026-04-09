@@ -9,4 +9,4 @@ pre-commit:
     biome-check:
       run: bun run check
     test:
-      run: bun test
+      run: bun run test

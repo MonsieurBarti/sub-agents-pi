@@ -1,0 +1,326 @@
+import * as fs from "node:fs";
+import type { AgentToolResult } from "@mariozechner/pi-agent-core";
+import type { Message } from "@mariozechner/pi-ai";
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { applyThinkingSuffix, formatFinalOutput } from "./formatters";
+import type { JobPool } from "./job-pool";
+import { buildPiArgs, cleanupTempDir } from "./pi-args";
+import { runChildPi } from "./pi-spawn";
+import type { SubagentDetails, SubagentJob, SubagentParamsT, ToolCallRecord } from "./types";
+
+export interface CreateExecutorOptions {
+	pool: JobPool;
+	piCommandOverride?: { command: string; baseArgs: string[] };
+}
+
+/**
+ * Maximum recursion depth for sub-agents. Nested sub-agent spawning is
+ * disabled by design — only the top-level pi (depth 0) may spawn sub-agents.
+ * Any child pi (depth ≥ 1) attempting to spawn is refused with a structured
+ * failure.
+ *
+ * Primary prevention is in `src/index.ts`, which skips tool registration
+ * entirely when `PI_SUBAGENT_DEPTH` is set. This constant is the executor's
+ * belt-and-braces fallback in case the tool is invoked programmatically
+ * without going through extension registration.
+ */
+export const MAX_SUBAGENT_DEPTH = 1;
+
+export function createExecutor(options: CreateExecutorOptions) {
+	const { pool, piCommandOverride } = options;
+
+	return {
+		async execute(
+			id: string,
+			params: SubagentParamsT,
+			signal: AbortSignal | undefined,
+			onUpdate: ((result: AgentToolResult<SubagentDetails>) => void) | undefined,
+			ctx: ExtensionContext,
+		): Promise<AgentToolResult<SubagentDetails>> {
+			const controller = new AbortController();
+			const { signal: combinedSignal, dispose: disposeSignal } = combineSignals(
+				signal,
+				controller.signal,
+			);
+
+			const details: SubagentDetails = {
+				id,
+				label: params.label ?? "subagent",
+				model: applyThinkingSuffix(params.model, params.thinking) ?? null,
+				status: "running",
+				startedAt: Date.now(),
+				task: params.task,
+				systemPrompt: params.system_prompt,
+				toolCalls: [],
+				currentTools: new Map(),
+				usage: {
+					input: 0,
+					output: 0,
+					cacheRead: 0,
+					cacheWrite: 0,
+					cost: 0,
+					turns: 0,
+					contextTokens: 0,
+				},
+				messages: [],
+				cwd: params.cwd ?? ctx.cwd,
+			};
+
+			const job: SubagentJob = {
+				id,
+				label: details.label,
+				model: details.model,
+				status: "running",
+				startedAt: details.startedAt,
+				result: details,
+				abort: () => controller.abort(),
+			};
+
+			pool.add(job);
+
+			// Depth guard — nested sub-agents are disabled. If we're already
+			// running inside a sub-agent process (PI_SUBAGENT_DEPTH ≥ 1), refuse
+			// to spawn further. This is the executor-level fallback; the
+			// extension registration in index.ts normally hides the tool
+			// altogether from child pi instances, so this branch should only
+			// ever fire via programmatic misuse.
+			const currentDepth = Number.parseInt(process.env.PI_SUBAGENT_DEPTH ?? "0", 10) || 0;
+			if (currentDepth >= MAX_SUBAGENT_DEPTH) {
+				details.status = "failed";
+				details.endedAt = Date.now();
+				details.error =
+					"Nested sub-agent spawning is disabled. Sub-agents cannot delegate to further sub-agents.";
+				pool.update(id, { status: "failed", endedAt: details.endedAt });
+				disposeSignal();
+				return {
+					content: [{ type: "text", text: details.error }],
+					details,
+				};
+			}
+			const childDepth = currentDepth + 1;
+
+			// Validate cwd before we try to spawn — gives a clear error path
+			// instead of a mystery "exited with code 1".
+			if (!fs.existsSync(details.cwd)) {
+				details.status = "failed";
+				details.endedAt = Date.now();
+				details.error = `cwd does not exist: ${details.cwd}`;
+				pool.update(id, { status: "failed", endedAt: details.endedAt });
+				disposeSignal();
+				return {
+					content: [{ type: "text", text: details.error }],
+					details,
+				};
+			}
+
+			let tempDir: string | null = null;
+			try {
+				const built = buildPiArgs({
+					task: params.task,
+					systemPrompt: params.system_prompt,
+					model: params.model,
+					thinking: params.thinking,
+					tools: params.tools,
+				});
+				tempDir = built.tempDir;
+
+				// Throttle mid-stream updates to ~20Hz. The terminal state
+				// transition (running → completed/failed/aborted) always flushes
+				// unconditionally below, so no observer misses the final snapshot
+				// regardless of throttle timing.
+				let lastUpdate = 0;
+				const throttleMs = 50;
+				const emitSnapshot = () => {
+					onUpdate?.({
+						content: [
+							{ type: "text", text: formatFinalOutput(details.messages) || "(running...)" },
+						],
+						details,
+					});
+				};
+				const fireUpdate = () => {
+					const now = Date.now();
+					if (now - lastUpdate >= throttleMs) {
+						lastUpdate = now;
+						emitSnapshot();
+					}
+				};
+
+				const result = await runChildPi({
+					args: built.args,
+					cwd: details.cwd,
+					signal: combinedSignal,
+					onEvent: (evt) => handleEvent(evt as Record<string, unknown>, details, fireUpdate),
+					commandOverride: piCommandOverride,
+					env: { ...process.env, PI_SUBAGENT_DEPTH: String(childDepth) },
+				});
+
+				details.status = result.wasAborted
+					? "aborted"
+					: result.exitCode === 0
+						? "completed"
+						: "failed";
+				details.endedAt = Date.now();
+
+				if (result.exitCode !== 0 && !result.wasAborted && !details.error) {
+					details.error = result.stderr.trim() || `Child pi exited with code ${result.exitCode}`;
+				}
+
+				const finalText = formatFinalOutput(details.messages) || details.error || "(no output)";
+
+				pool.update(id, { status: details.status, endedAt: details.endedAt });
+
+				// Trailing-edge flush: ensure onUpdate observers see the terminal
+				// status even if the last event landed inside the throttle window.
+				emitSnapshot();
+
+				return {
+					content: [{ type: "text", text: finalText }],
+					details,
+				};
+			} catch (err) {
+				// Convert any error (spawn ENOENT, buildPiArgs fs throw, etc.) into a
+				// structured failure so the LLM sees it as a tool result, not an
+				// unhandled rejection.
+				details.status = "failed";
+				details.endedAt = Date.now();
+				details.error = err instanceof Error ? err.message : String(err);
+				pool.update(id, { status: "failed", endedAt: details.endedAt });
+				return {
+					content: [{ type: "text", text: details.error }],
+					details,
+				};
+			} finally {
+				cleanupTempDir(tempDir);
+				disposeSignal();
+			}
+		},
+	};
+}
+
+function handleEvent(
+	evt: Record<string, unknown>,
+	details: SubagentDetails,
+	fireUpdate: () => void,
+): void {
+	if (evt.type === "tool_execution_start" && typeof evt.toolName === "string") {
+		// Track by toolCallId so interleaved starts don't clobber each other.
+		// Pi always sends a string toolCallId; synthesize one if missing so we
+		// can still match a later end event (best-effort fallback).
+		const toolCallId = typeof evt.toolCallId === "string" ? evt.toolCallId : `__anon_${Date.now()}`;
+		const record: ToolCallRecord = {
+			name: evt.toolName,
+			toolCallId,
+			args: (evt.args as Record<string, unknown>) ?? {},
+			startedAt: Date.now(),
+		};
+		details.currentTools.set(toolCallId, record);
+		fireUpdate();
+		return;
+	}
+
+	if (evt.type === "tool_execution_end") {
+		// Match by toolCallId against the in-flight map. If no match (shouldn't
+		// happen with a well-behaved pi stream), fall back to any single
+		// in-flight record or synthesize one so we still capture the result.
+		const evtCallId = typeof evt.toolCallId === "string" ? evt.toolCallId : undefined;
+		let record: ToolCallRecord | undefined;
+		if (evtCallId && details.currentTools.has(evtCallId)) {
+			record = details.currentTools.get(evtCallId);
+			details.currentTools.delete(evtCallId);
+		} else if (!evtCallId && details.currentTools.size === 1) {
+			// Exactly one in-flight and no id to disambiguate: assume it's ours.
+			const [onlyId, only] = details.currentTools.entries().next().value ?? [];
+			if (onlyId) {
+				record = only;
+				details.currentTools.delete(onlyId);
+			}
+		} else if (evtCallId) {
+			// Orphan end event — synthesize a minimal record so the result is
+			// still visible in the transcript.
+			record = {
+				name: typeof evt.toolName === "string" ? evt.toolName : "unknown",
+				toolCallId: evtCallId,
+				args: {},
+				startedAt: Date.now(),
+			};
+		}
+
+		if (record) {
+			record.endedAt = Date.now();
+			if ("result" in evt) record.result = evt.result;
+			if (typeof evt.isError === "boolean") record.isError = evt.isError;
+			details.toolCalls.push(record);
+		}
+		fireUpdate();
+		return;
+	}
+
+	if (evt.type === "message_end" && evt.message) {
+		const msg = evt.message as Message;
+		details.messages.push(msg);
+
+		if (msg.role === "assistant") {
+			details.usage.turns++;
+			const u = msg.usage as
+				| {
+						input?: number;
+						inputTokens?: number;
+						output?: number;
+						outputTokens?: number;
+						cacheRead?: number;
+						cacheWrite?: number;
+						cost?: { total: number };
+						totalTokens?: number;
+				  }
+				| undefined;
+			if (u) {
+				details.usage.input += u.input || u.inputTokens || 0;
+				details.usage.output += u.output || u.outputTokens || 0;
+				details.usage.cacheRead += u.cacheRead || 0;
+				details.usage.cacheWrite += u.cacheWrite || 0;
+				details.usage.cost += u.cost?.total || 0;
+				// contextTokens is a running total from pi, not an increment — only
+				// overwrite when present so a message without totalTokens doesn't
+				// reset our display to zero mid-stream.
+				if (typeof u.totalTokens === "number") {
+					details.usage.contextTokens = u.totalTokens;
+				}
+			}
+			if (!details.model && "model" in msg && typeof msg.model === "string")
+				details.model = msg.model;
+			if ("errorMessage" in msg && typeof msg.errorMessage === "string")
+				details.error = msg.errorMessage;
+		}
+		fireUpdate();
+	}
+}
+
+/**
+ * Combine two AbortSignals into one. Returns the combined signal plus a
+ * `dispose` function that removes any listeners we installed on the caller's
+ * signal. Always call `dispose()` in a `finally` block to prevent listener
+ * accumulation on long-lived parent signals (e.g. session-scoped abort).
+ */
+function combineSignals(
+	a: AbortSignal | undefined,
+	b: AbortSignal,
+): { signal: AbortSignal; dispose: () => void } {
+	if (!a) return { signal: b, dispose: () => {} };
+
+	const controller = new AbortController();
+	if (a.aborted || b.aborted) controller.abort();
+
+	const onAAbort = () => controller.abort();
+	const onBAbort = () => controller.abort();
+	a.addEventListener("abort", onAAbort, { once: true });
+	b.addEventListener("abort", onBAbort, { once: true });
+
+	return {
+		signal: controller.signal,
+		dispose: () => {
+			a.removeEventListener("abort", onAAbort);
+			b.removeEventListener("abort", onBAbort);
+		},
+	};
+}
