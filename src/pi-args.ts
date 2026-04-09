@@ -26,7 +26,6 @@ export interface BuildPiArgsInput {
 	model?: string;
 	thinking?: string;
 	tools?: string[];
-	cwd?: string;
 }
 
 export interface BuildPiArgsResult {

@@ -82,6 +82,21 @@ describe("executor", () => {
 		expect(result.details?.toolCalls[0]?.name).toBe("grep");
 	});
 
+	it("captures tool result payload and isError from tool_execution_end", async () => {
+		const result = await executor.execute(
+			"test-4b",
+			{ task: "t", system_prompt: "sp" },
+			undefined,
+			undefined,
+			{ cwd: "/tmp", hasUI: false } as ExtensionContext,
+		);
+
+		const call = result.details?.toolCalls[0];
+		expect(call?.toolCallId).toBe("call_1");
+		expect(call?.result).toEqual({ matches: ["src/a.ts", "src/b.ts"] });
+		expect(call?.isError).toBe(false);
+	});
+
 	it("captures usage stats", async () => {
 		const result = await executor.execute(
 			"test-5",

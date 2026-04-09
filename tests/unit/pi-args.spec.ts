@@ -2,12 +2,15 @@ import * as fs from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { applyThinkingSuffix, buildPiArgs, cleanupTempDir } from "../../src/pi-args";
 
-vi.mock("node:fs", () => ({
-	mkdirSync: vi.fn(() => "/tmp/test-dir"),
-	writeFileSync: vi.fn(),
-	rmSync: vi.fn(),
-	existsSync: vi.fn(() => false),
-}));
+vi.mock("node:fs", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs")>();
+	return {
+		...actual,
+		mkdtempSync: vi.fn(() => "/tmp/pi-subagent-test"),
+		writeFileSync: vi.fn(),
+		rmSync: vi.fn(),
+	};
+});
 
 describe("pi-args", () => {
 	describe("applyThinkingSuffix", () => {

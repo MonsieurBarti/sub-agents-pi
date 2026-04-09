@@ -36,9 +36,12 @@ export interface UsageStats {
 
 export interface ToolCallRecord {
 	name: string;
+	toolCallId?: string;
 	args: Record<string, unknown>;
 	startedAt?: number;
 	endedAt?: number;
+	result?: unknown;
+	isError?: boolean;
 }
 
 export interface SubagentDetails {

@@ -5,13 +5,7 @@ import type { JobPool } from "./job-pool";
 import { buildPiArgs, cleanupTempDir } from "./pi-args";
 import { applyThinkingSuffix } from "./pi-args";
 import { runChildPi } from "./pi-spawn";
-import type {
-	SubagentDetails,
-	SubagentJob,
-	SubagentParamsT,
-	ToolCallRecord,
-	UsageStats,
-} from "./types";
+import type { SubagentDetails, SubagentJob, SubagentParamsT, ToolCallRecord } from "./types";
 
 export interface CreateExecutorOptions {
 	pool: JobPool;
@@ -73,7 +67,6 @@ export function createExecutor(options: CreateExecutorOptions) {
 				model: params.model,
 				thinking: params.thinking,
 				tools: params.tools,
-				cwd: details.cwd,
 			});
 
 			// Throttle updates
@@ -136,22 +129,43 @@ function handleEvent(
 	details: SubagentDetails,
 	fireUpdate: () => void,
 ): void {
-	if (evt.type === "tool_execution_start") {
-		details.currentTool = {
-			name: evt.toolName as string,
+	if (evt.type === "tool_execution_start" && typeof evt.toolName === "string") {
+		const record: ToolCallRecord = {
+			name: evt.toolName,
+			toolCallId: typeof evt.toolCallId === "string" ? evt.toolCallId : undefined,
 			args: (evt.args as Record<string, unknown>) ?? {},
 			startedAt: Date.now(),
 		};
+		details.currentTool = record;
 		fireUpdate();
+		return;
 	}
 
 	if (evt.type === "tool_execution_end") {
-		if (details.currentTool) {
-			details.currentTool.endedAt = Date.now();
-			details.toolCalls.push(details.currentTool);
+		// Capture result + isError from the end event (real pi AgentEvent shape).
+		// Match by toolCallId when present; otherwise fall back to the last
+		// in-flight record (single-tool-at-a-time path).
+		const evtCallId = typeof evt.toolCallId === "string" ? evt.toolCallId : undefined;
+		let record = details.currentTool;
+		if (evtCallId && record?.toolCallId !== evtCallId) {
+			// Out-of-order end for a different call — ignore currentTool and create
+			// a synthetic record so we still capture the result.
+			record = {
+				name: typeof evt.toolName === "string" ? evt.toolName : "unknown",
+				toolCallId: evtCallId,
+				args: {},
+				startedAt: Date.now(),
+			};
+		}
+		if (record) {
+			record.endedAt = Date.now();
+			if ("result" in evt) record.result = evt.result;
+			if (typeof evt.isError === "boolean") record.isError = evt.isError;
+			details.toolCalls.push(record);
 		}
 		details.currentTool = null;
 		fireUpdate();
+		return;
 	}
 
 	if (evt.type === "message_end" && evt.message) {
@@ -185,11 +199,6 @@ function handleEvent(
 			if ("errorMessage" in msg && typeof msg.errorMessage === "string")
 				details.error = msg.errorMessage;
 		}
-		fireUpdate();
-	}
-
-	if (evt.type === "tool_result_end" && evt.message) {
-		details.messages.push(evt.message as Message);
 		fireUpdate();
 	}
 }
