@@ -86,13 +86,13 @@ Use the tff-subagent tool with system_prompt "You are a fast codebase scout. Ret
 The `tff-subagent` tool spawns a child process that runs independently. You'll see:
 - **Scrollback row** — Compact status with live tool calls, final summary after completion
 - **Bottom widget** — Counter showing running/done sub-agents (`🧬 sub-agents  2 running · 1 done`)
-- **Overlay panel** — Rich interactive view opened with `alt+s`
+- **Overlay panel** — Rich interactive view opened with `ctrl+shift+s`
 
 > The tool is namespaced as `tff-subagent` so it can coexist with other pi packages (such as `pi-superpowers-plus`) that also ship a `subagent` tool. The user-facing display label still shows as "subagent" / your custom `label` — only the LLM-facing tool id is prefixed.
 
 ### Opening the spy panel
 
-Press `alt+s` to open the interactive sub-agents panel:
+Press `ctrl+shift+s` to open the interactive sub-agents panel:
 
 - **↑↓** — Navigate between sub-agents
 - **Enter** — Zoom into selected sub-agent's detail view
@@ -167,14 +167,14 @@ Press `Ctrl+O` to expand and see the full transcript, all tool calls, and the fi
 Persistent counter below the editor:
 
 ```
-🧬 sub-agents  2 running · 1 done    [alt+s] open panel
+🧬 sub-agents  2 running · 1 done    [ctrl+shift+s] open panel
 ```
 
 Auto-clears 30 seconds after all sub-agents finish.
 
 ### Overlay panel
 
-Rich interactive view opened with `alt+s`:
+Rich interactive view opened with `ctrl+shift+s`:
 
 ```
 ╭─ 🧬 Sub-agents ──────────────────────────────────────────────╮

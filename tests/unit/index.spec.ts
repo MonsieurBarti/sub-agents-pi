@@ -36,10 +36,12 @@ describe("extension registration", () => {
 		expect(pi.registerTool).toHaveBeenCalledWith(expect.objectContaining({ name: "tff-subagent" }));
 	});
 
-	it("registers the panel shortcut at the top level", () => {
+	it("registers the panel shortcut as ctrl+shift+s at the top level", () => {
+		// ctrl+shift+s avoids the macOS Option-S → ß compose quirk that
+		// swallows alt+s in most terminal defaults.
 		const pi = makeMockPi();
 		registerExtension(pi);
-		expect(pi.registerShortcut).toHaveBeenCalled();
+		expect(pi.registerShortcut).toHaveBeenCalledWith("ctrl+shift+s", expect.any(Object));
 	});
 
 	it("registers session lifecycle hooks", () => {

@@ -36,7 +36,7 @@ export function updateWidget(ctx: ExtensionContext, pool: JobPool): void {
 			if (running > 0) parts.push(theme.fg("warning", `${running} running`));
 			if (done > 0) parts.push(theme.fg("muted", `${done} done`));
 			const body = parts.join(theme.fg("muted", " · "));
-			const hint = theme.fg("dim", "    [alt+s] open panel");
+			const hint = theme.fg("dim", "    [ctrl+shift+s] open panel");
 			return new Text(`${body}${hint}`, 0, 0);
 		},
 		{ placement: "belowEditor" },

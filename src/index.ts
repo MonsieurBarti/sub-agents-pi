@@ -89,7 +89,11 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	// Panel shortcut
 	// -----------------------------------------------------------------
 
-	pi.registerShortcut("alt+s", {
+	// ctrl+shift+s rather than alt+s: on macOS the Option key produces
+	// compose characters (Option-S → ß) by default and most terminals don't
+	// forward it as a modifier without explicit config. ctrl+shift+s works
+	// universally without any terminal tweaks.
+	pi.registerShortcut("ctrl+shift+s", {
 		description: "Open the sub-agents panel",
 		handler: async (ctx) => {
 			await ctx.ui.custom<void>(
@@ -130,7 +134,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		}, 10000);
 
 		if (ctx.hasUI) {
-			ctx.ui.notify("Sub-agents ready (alt+s to open panel)", "info");
+			ctx.ui.notify("Sub-agents ready (ctrl+shift+s to open panel)", "info");
 		}
 	});
 
