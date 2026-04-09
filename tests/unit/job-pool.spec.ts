@@ -35,6 +35,14 @@ describe("JobPool", () => {
 			pool.add(makeJob());
 			expect(handler).toHaveBeenCalled();
 		});
+
+		it("throws when a job with the same id is added twice", () => {
+			const job = makeJob({ id: "dup" });
+			pool.add(job);
+			expect(() => pool.add(makeJob({ id: "dup" }))).toThrow(/duplicate/i);
+			// Original job must be preserved unchanged.
+			expect(pool.get("dup")).toBe(job);
+		});
 	});
 
 	describe("update", () => {

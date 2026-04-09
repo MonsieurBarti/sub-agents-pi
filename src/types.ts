@@ -71,8 +71,12 @@ export interface SubagentDetails {
 /**
  * Return the most-recently-started in-flight tool, or null if none.
  * Safe to call from render paths; preserves Map iteration order.
+ * Defensive against malformed details (e.g. test stubs without currentTools).
  */
 export function getCurrentTool(details: SubagentDetails): ToolCallRecord | null {
+	if (!details.currentTools || typeof details.currentTools.values !== "function") {
+		return null;
+	}
 	let latest: ToolCallRecord | null = null;
 	for (const record of details.currentTools.values()) {
 		latest = record;

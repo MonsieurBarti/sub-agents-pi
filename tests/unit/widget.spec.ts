@@ -1,10 +1,10 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { TUI } from "@mariozechner/pi-tui";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { JobPool } from "../../src/job-pool";
 import type { SubagentDetails, SubagentJob } from "../../src/types";
 import { WIDGET_KEY } from "../../src/types";
-import { updateWidget } from "../../src/widget";
+import { resetWidgetCache, updateWidget } from "../../src/widget";
 
 function makeContext() {
 	return {
@@ -15,20 +15,53 @@ function makeContext() {
 	} as unknown as ExtensionContext;
 }
 
-function makeJob(overrides: Partial<SubagentJob> = {}): SubagentJob {
+function makeDetails(overrides: Partial<SubagentDetails> = {}): SubagentDetails {
 	return {
 		id: "1",
 		label: "a",
 		model: null,
 		status: "running",
 		startedAt: Date.now(),
-		result: {} as SubagentDetails,
+		task: "t",
+		systemPrompt: "",
+		toolCalls: [],
+		currentTools: new Map(),
+		usage: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			cost: 0,
+			turns: 0,
+			contextTokens: 0,
+		},
+		messages: [],
+		cwd: "/tmp",
+		...overrides,
+	};
+}
+
+function makeJob(overrides: Partial<SubagentJob> = {}): SubagentJob {
+	const id = overrides.id ?? "1";
+	return {
+		id,
+		label: "a",
+		model: null,
+		status: "running",
+		startedAt: Date.now(),
+		result: makeDetails({ id, status: overrides.status ?? "running" }),
 		abort: vi.fn(),
 		...overrides,
-	} as SubagentJob;
+	};
 }
 
 describe("widget", () => {
+	beforeEach(() => {
+		// Dedupe cache is module-scoped — tests must start fresh or they'll
+		// see stale hash state from the previous test.
+		resetWidgetCache();
+	});
+
 	describe("updateWidget", () => {
 		it("hides widget when pool is empty", () => {
 			const ctx = makeContext();

@@ -263,6 +263,44 @@ describe("executor", () => {
 		expect(r2.details?.usage.turns).toBe(1);
 	});
 
+	it("rejects spawn when PI_SUBAGENT_DEPTH has reached the cap", async () => {
+		const prev = process.env.PI_SUBAGENT_DEPTH;
+		process.env.PI_SUBAGENT_DEPTH = "3"; // cap = 3, we're at 3
+		try {
+			const result = await executor.execute(
+				"test-depth",
+				{ task: "t", system_prompt: "sp" },
+				undefined,
+				undefined,
+				{ cwd: "/tmp", hasUI: false } as ExtensionContext,
+			);
+			expect(result.details?.status).toBe("failed");
+			expect(result.details?.error).toMatch(/depth/i);
+			expect(pool.get("test-depth")?.status).toBe("failed");
+		} finally {
+			if (prev === undefined) Reflect.deleteProperty(process.env, "PI_SUBAGENT_DEPTH");
+			else process.env.PI_SUBAGENT_DEPTH = prev;
+		}
+	});
+
+	it("allows spawn when PI_SUBAGENT_DEPTH is below the cap", async () => {
+		const prev = process.env.PI_SUBAGENT_DEPTH;
+		process.env.PI_SUBAGENT_DEPTH = "1";
+		try {
+			const result = await executor.execute(
+				"test-depth-ok",
+				{ task: "t", system_prompt: "sp" },
+				undefined,
+				undefined,
+				{ cwd: "/tmp", hasUI: false } as ExtensionContext,
+			);
+			expect(result.details?.status).toBe("completed");
+		} finally {
+			if (prev === undefined) Reflect.deleteProperty(process.env, "PI_SUBAGENT_DEPTH");
+			else process.env.PI_SUBAGENT_DEPTH = prev;
+		}
+	});
+
 	it("removes abort listener from caller signal after execute resolves", async () => {
 		const controller = new AbortController();
 		const parentSignal = controller.signal;

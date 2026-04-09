@@ -121,6 +121,23 @@ Use a sub-agent with system_prompt "You are a read-only scout. Find all authenti
 
 The sub-agent won't be able to write files, edit code, or run bash commands — perfect for safe reconnaissance.
 
+## 🛡 Safety guardrails
+
+**Depth limit — fork-bomb prevention.** Sub-agents can themselves call the `subagent` tool, which would otherwise allow unbounded recursion. The extension hardcodes `MAX_SUBAGENT_DEPTH = 3` and propagates depth via the `PI_SUBAGENT_DEPTH` env var. A sub-agent attempting to spawn at depth 3 receives a structured failure and does not launch.
+
+**cwd validation.** If you pass a `cwd` that doesn't exist on disk, the tool returns `"cwd does not exist: <path>"` before touching `spawn()`, rather than producing a mystery "exited with code 1".
+
+**Kill confirmation.** Pressing `k` in the overlay panel shows a confirmation dialog via `ctx.ui.confirm` — a stray keystroke won't terminate a running sub-agent mid-turn.
+
+**Resource safety.** Temp directories for system-prompt files are cleaned up even when `writeFileSync` throws mid-build. SIGKILL escalation timers are cleared on clean exit. Abort listeners on parent signals are tracked and removed to prevent accumulation across many sub-agent calls.
+
+## 🔌 Environment variables
+
+| Var | Purpose | Default |
+|-----|---------|---------|
+| `PI_BIN` | Absolute path to the pi binary to spawn for children. Overrides auto-detection. Useful for non-standard installs (compiled binaries, bun-compiled single-file, wrapper shims). | auto-detected from `process.argv[1]` / `process.execPath` / `PATH` |
+| `PI_SUBAGENT_DEPTH` | Set by the extension on each spawned child (`parent_depth + 1`). Unset on manual runs. Read at executor entry to enforce the depth cap. | `0` at the top level |
+
 ## 🎨 TUI Overview
 
 ### Scrollback tool row

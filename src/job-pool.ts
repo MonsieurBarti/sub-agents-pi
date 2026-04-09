@@ -5,6 +5,9 @@ export class JobPool extends EventEmitter {
 	private jobs = new Map<string, SubagentJob>();
 
 	add(job: SubagentJob): void {
+		if (this.jobs.has(job.id)) {
+			throw new Error(`Duplicate job id: ${job.id}`);
+		}
 		this.jobs.set(job.id, job);
 		this.emit("change");
 	}

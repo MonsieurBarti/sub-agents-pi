@@ -6,7 +6,7 @@ import { SubagentPanel } from "./panel";
 import { renderSubagentCall, renderSubagentResult } from "./render";
 import { SubagentParams, WIDGET_KEY } from "./types";
 import type { SubagentDetails } from "./types";
-import { updateWidget } from "./widget";
+import { resetWidgetCache, updateWidget } from "./widget";
 
 export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	const pool = new JobPool();
@@ -117,6 +117,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		if (state.lastUiContext?.hasUI) {
 			state.lastUiContext.ui.setWidget(WIDGET_KEY, undefined);
 		}
+		resetWidgetCache();
 
 		// Clear prune timer
 		if (state.pruneTimer) {

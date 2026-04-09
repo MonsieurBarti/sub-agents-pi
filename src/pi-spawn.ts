@@ -8,6 +8,8 @@ export interface RunChildPiOptions {
 	signal?: AbortSignal;
 	onEvent: (event: unknown) => void;
 	commandOverride?: { command: string; baseArgs: string[] };
+	/** Additional env vars for the child process (merged with process.env). */
+	env?: NodeJS.ProcessEnv;
 }
 
 export interface RunChildPiResult {
@@ -57,7 +59,7 @@ export function getPiInvocation(args: string[]): PiInvocation {
 }
 
 export async function runChildPi(options: RunChildPiOptions): Promise<RunChildPiResult> {
-	const { args, cwd, signal, onEvent, commandOverride } = options;
+	const { args, cwd, signal, onEvent, commandOverride, env } = options;
 	const invocation = commandOverride
 		? { command: commandOverride.command, args: [...commandOverride.baseArgs, ...args] }
 		: getPiInvocation(args);
@@ -66,6 +68,7 @@ export async function runChildPi(options: RunChildPiOptions): Promise<RunChildPi
 		const proc = spawn(invocation.command, invocation.args, {
 			cwd,
 			stdio: ["ignore", "pipe", "pipe"],
+			env: env ?? process.env,
 		});
 
 		let buffer = "";
@@ -74,13 +77,19 @@ export async function runChildPi(options: RunChildPiOptions): Promise<RunChildPi
 		let killTimer: ReturnType<typeof setTimeout> | null = null;
 		let settled = false;
 
-		const processLine = (line: string) => {
+		const processLine = (line: string, { salvage = false }: { salvage?: boolean } = {}) => {
 			if (!line.trim()) return;
 			try {
 				const event = JSON.parse(line);
 				onEvent(event);
 			} catch {
-				// Non-JSON lines are expected; ignore
+				// Non-JSON lines during normal streaming are expected (pi may emit
+				// plain-text warnings). On the final flush after close, a malformed
+				// line is likely a truncated event from SIGKILL — surface it via
+				// stderr so callers can see what was lost.
+				if (salvage) {
+					stderr += `\n[truncated json at shutdown]: ${line}\n`;
+				}
 			}
 		};
 
@@ -118,8 +127,9 @@ export async function runChildPi(options: RunChildPiOptions): Promise<RunChildPi
 				clearTimeout(killTimer);
 				killTimer = null;
 			}
-			// Flush remaining buffer
-			if (buffer.trim()) processLine(buffer);
+			// Flush remaining buffer. Treat the trailing fragment as salvage so
+			// any malformed JSON is captured to stderr instead of silently dropped.
+			if (buffer.trim()) processLine(buffer, { salvage: true });
 			resolve({ exitCode, stderr, wasAborted });
 		});
 

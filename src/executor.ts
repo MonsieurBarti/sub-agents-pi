@@ -13,6 +13,17 @@ export interface CreateExecutorOptions {
 	piCommandOverride?: { command: string; baseArgs: string[] };
 }
 
+/**
+ * Maximum recursion depth for sub-agents. Each spawn increments
+ * PI_SUBAGENT_DEPTH in the child env; when we're about to spawn but the
+ * current process is already at or past this limit, we refuse. This is a
+ * fork-bomb guard — without it, a confused or hostile sub-agent prompt could
+ * recursively spawn until resource exhaustion.
+ *
+ * Hardcoded for MVP; see docs/plans/2026-04-09-review-fixes-plan.md Slice 5E.
+ */
+export const MAX_SUBAGENT_DEPTH = 3;
+
 export function createExecutor(options: CreateExecutorOptions) {
 	const { pool, piCommandOverride } = options;
 
@@ -64,6 +75,23 @@ export function createExecutor(options: CreateExecutorOptions) {
 			};
 
 			pool.add(job);
+
+			// Depth guard — fork-bomb prevention. Each child run has
+			// PI_SUBAGENT_DEPTH set one higher than the parent (see below);
+			// when we reach the cap we refuse to spawn further.
+			const currentDepth = Number.parseInt(process.env.PI_SUBAGENT_DEPTH ?? "0", 10) || 0;
+			if (currentDepth >= MAX_SUBAGENT_DEPTH) {
+				details.status = "failed";
+				details.endedAt = Date.now();
+				details.error = `Sub-agent depth limit reached (${MAX_SUBAGENT_DEPTH}). Nested sub-agent spawning is blocked to prevent runaway recursion.`;
+				pool.update(id, { status: "failed", endedAt: details.endedAt });
+				disposeSignal();
+				return {
+					content: [{ type: "text", text: details.error }],
+					details,
+				};
+			}
+			const childDepth = currentDepth + 1;
 
 			// Validate cwd before we try to spawn — gives a clear error path
 			// instead of a mystery "exited with code 1".
@@ -118,6 +146,7 @@ export function createExecutor(options: CreateExecutorOptions) {
 					signal: combinedSignal,
 					onEvent: (evt) => handleEvent(evt as Record<string, unknown>, details, fireUpdate),
 					commandOverride: piCommandOverride,
+					env: { ...process.env, PI_SUBAGENT_DEPTH: String(childDepth) },
 				});
 
 				details.status = result.wasAborted
@@ -245,7 +274,12 @@ function handleEvent(
 				details.usage.cacheRead += u.cacheRead || 0;
 				details.usage.cacheWrite += u.cacheWrite || 0;
 				details.usage.cost += u.cost?.total || 0;
-				details.usage.contextTokens = u.totalTokens || 0;
+				// contextTokens is a running total from pi, not an increment — only
+				// overwrite when present so a message without totalTokens doesn't
+				// reset our display to zero mid-stream.
+				if (typeof u.totalTokens === "number") {
+					details.usage.contextTokens = u.totalTokens;
+				}
 			}
 			if (!details.model && "model" in msg && typeof msg.model === "string")
 				details.model = msg.model;
