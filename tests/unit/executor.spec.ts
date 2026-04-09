@@ -263,9 +263,13 @@ describe("executor", () => {
 		expect(r2.details?.usage.turns).toBe(1);
 	});
 
-	it("rejects spawn when PI_SUBAGENT_DEPTH has reached the cap", async () => {
+	it("rejects spawn when running inside a sub-agent (PI_SUBAGENT_DEPTH >= 1)", async () => {
+		// Nested sub-agents are disabled: depth cap = 1, so any depth ≥ 1 is
+		// already at the cap. This is the executor's belt-and-braces guard —
+		// the primary prevention is skipping tool registration in index.ts
+		// when PI_SUBAGENT_DEPTH is set.
 		const prev = process.env.PI_SUBAGENT_DEPTH;
-		process.env.PI_SUBAGENT_DEPTH = "3"; // cap = 3, we're at 3
+		process.env.PI_SUBAGENT_DEPTH = "1";
 		try {
 			const result = await executor.execute(
 				"test-depth",
@@ -275,7 +279,7 @@ describe("executor", () => {
 				{ cwd: "/tmp", hasUI: false } as ExtensionContext,
 			);
 			expect(result.details?.status).toBe("failed");
-			expect(result.details?.error).toMatch(/depth/i);
+			expect(result.details?.error).toMatch(/nested sub-agent/i);
 			expect(pool.get("test-depth")?.status).toBe("failed");
 		} finally {
 			if (prev === undefined) Reflect.deleteProperty(process.env, "PI_SUBAGENT_DEPTH");
@@ -283,9 +287,9 @@ describe("executor", () => {
 		}
 	});
 
-	it("allows spawn when PI_SUBAGENT_DEPTH is below the cap", async () => {
+	it("allows spawn at the top level (PI_SUBAGENT_DEPTH unset or 0)", async () => {
 		const prev = process.env.PI_SUBAGENT_DEPTH;
-		process.env.PI_SUBAGENT_DEPTH = "1";
+		process.env.PI_SUBAGENT_DEPTH = "0";
 		try {
 			const result = await executor.execute(
 				"test-depth-ok",

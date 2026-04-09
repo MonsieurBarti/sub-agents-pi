@@ -8,7 +8,30 @@ import { SubagentParams, WIDGET_KEY } from "./types";
 import type { SubagentDetails } from "./types";
 import { resetWidgetCache, updateWidget } from "./widget";
 
+/**
+ * True when this process was spawned as a sub-agent child (pi sets
+ * PI_SUBAGENT_DEPTH on the child env before exec). We use this flag to hide
+ * the `subagent` tool and its keyboard shortcut from child pi instances so
+ * their LLM can't recursively delegate.
+ */
+function isRunningAsSubagent(): boolean {
+	const depth = Number.parseInt(process.env.PI_SUBAGENT_DEPTH ?? "0", 10) || 0;
+	return depth >= 1;
+}
+
 export default function registerSubagentExtension(pi: ExtensionAPI): void {
+	// Nested sub-agents are disabled by design. If this extension is loaded
+	// inside a child pi (PI_SUBAGENT_DEPTH ≥ 1), we skip tool and shortcut
+	// registration entirely so the sub-agent's LLM never even sees the
+	// `subagent` tool as an option.
+	//
+	// This is the primary prevention mechanism. The executor's depth guard
+	// (MAX_SUBAGENT_DEPTH = 1) is a belt-and-braces fallback in case the tool
+	// somehow gets invoked anyway (e.g. programmatic use bypassing registration).
+	if (isRunningAsSubagent()) {
+		return;
+	}
+
 	const pool = new JobPool();
 	const executor = createExecutor({ pool });
 

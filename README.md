@@ -123,7 +123,12 @@ The sub-agent won't be able to write files, edit code, or run bash commands — 
 
 ## 🛡 Safety guardrails
 
-**Depth limit — fork-bomb prevention.** Sub-agents can themselves call the `subagent` tool, which would otherwise allow unbounded recursion. The extension hardcodes `MAX_SUBAGENT_DEPTH = 3` and propagates depth via the `PI_SUBAGENT_DEPTH` env var. A sub-agent attempting to spawn at depth 3 receives a structured failure and does not launch.
+**Nested sub-agents are disabled.** Only the top-level pi can spawn sub-agents — sub-agents cannot themselves call the `subagent` tool. This is enforced at two layers:
+
+1. **Registration-level:** when a child pi loads this extension, it detects `PI_SUBAGENT_DEPTH ≥ 1` and skips `registerTool` / `registerShortcut` entirely. The sub-agent's LLM never sees `subagent` as an available tool.
+2. **Executor-level (fallback):** `MAX_SUBAGENT_DEPTH = 1` means any invocation from inside a sub-agent process returns a structured failure: "Nested sub-agent spawning is disabled." This only fires if the tool is somehow invoked programmatically, bypassing extension registration.
+
+This prevents fork-bomb scenarios from confused or hostile prompts, and keeps reasoning about sub-agent lifecycles simple (the pool only ever holds a flat level of jobs).
 
 **cwd validation.** If you pass a `cwd` that doesn't exist on disk, the tool returns `"cwd does not exist: <path>"` before touching `spawn()`, rather than producing a mystery "exited with code 1".
 
@@ -136,7 +141,7 @@ The sub-agent won't be able to write files, edit code, or run bash commands — 
 | Var | Purpose | Default |
 |-----|---------|---------|
 | `PI_BIN` | Absolute path to the pi binary to spawn for children. Overrides auto-detection. Useful for non-standard installs (compiled binaries, bun-compiled single-file, wrapper shims). | auto-detected from `process.argv[1]` / `process.execPath` / `PATH` |
-| `PI_SUBAGENT_DEPTH` | Set by the extension on each spawned child (`parent_depth + 1`). Unset on manual runs. Read at executor entry to enforce the depth cap. | `0` at the top level |
+| `PI_SUBAGENT_DEPTH` | Set by the extension on each spawned child (`parent_depth + 1`). When present in a child pi, the extension skips tool registration entirely. The executor also refuses to spawn when depth ≥ 1 as a fallback. | unset at the top level |
 
 ## 🎨 TUI Overview
 

@@ -14,15 +14,17 @@ export interface CreateExecutorOptions {
 }
 
 /**
- * Maximum recursion depth for sub-agents. Each spawn increments
- * PI_SUBAGENT_DEPTH in the child env; when we're about to spawn but the
- * current process is already at or past this limit, we refuse. This is a
- * fork-bomb guard — without it, a confused or hostile sub-agent prompt could
- * recursively spawn until resource exhaustion.
+ * Maximum recursion depth for sub-agents. Nested sub-agent spawning is
+ * disabled by design — only the top-level pi (depth 0) may spawn sub-agents.
+ * Any child pi (depth ≥ 1) attempting to spawn is refused with a structured
+ * failure.
  *
- * Hardcoded for MVP; see docs/plans/2026-04-09-review-fixes-plan.md Slice 5E.
+ * Primary prevention is in `src/index.ts`, which skips tool registration
+ * entirely when `PI_SUBAGENT_DEPTH` is set. This constant is the executor's
+ * belt-and-braces fallback in case the tool is invoked programmatically
+ * without going through extension registration.
  */
-export const MAX_SUBAGENT_DEPTH = 3;
+export const MAX_SUBAGENT_DEPTH = 1;
 
 export function createExecutor(options: CreateExecutorOptions) {
 	const { pool, piCommandOverride } = options;
@@ -76,14 +78,18 @@ export function createExecutor(options: CreateExecutorOptions) {
 
 			pool.add(job);
 
-			// Depth guard — fork-bomb prevention. Each child run has
-			// PI_SUBAGENT_DEPTH set one higher than the parent (see below);
-			// when we reach the cap we refuse to spawn further.
+			// Depth guard — nested sub-agents are disabled. If we're already
+			// running inside a sub-agent process (PI_SUBAGENT_DEPTH ≥ 1), refuse
+			// to spawn further. This is the executor-level fallback; the
+			// extension registration in index.ts normally hides the tool
+			// altogether from child pi instances, so this branch should only
+			// ever fire via programmatic misuse.
 			const currentDepth = Number.parseInt(process.env.PI_SUBAGENT_DEPTH ?? "0", 10) || 0;
 			if (currentDepth >= MAX_SUBAGENT_DEPTH) {
 				details.status = "failed";
 				details.endedAt = Date.now();
-				details.error = `Sub-agent depth limit reached (${MAX_SUBAGENT_DEPTH}). Nested sub-agent spawning is blocked to prevent runaway recursion.`;
+				details.error =
+					"Nested sub-agent spawning is disabled. Sub-agents cannot delegate to further sub-agents.";
 				pool.update(id, { status: "failed", endedAt: details.endedAt });
 				disposeSignal();
 				return {
