@@ -1,3 +1,6 @@
+import type { AgentToolResult } from "@mariozechner/pi-agent-core";
+import type { Message } from "@mariozechner/pi-ai";
+import type { Theme } from "@mariozechner/pi-coding-agent";
 import { beforeEach, describe, expect, it } from "vitest";
 import { renderSubagentCall, renderSubagentResult } from "../../src/render";
 import type { SubagentDetails } from "../../src/types";
@@ -7,6 +10,26 @@ const fakeTheme = {
 	bg: (_color: string, text: string) => text,
 	bold: (text: string) => text,
 };
+
+function makeMessage(role: "assistant", content: string): Message {
+	return {
+		role,
+		content: [{ type: "text", text: content }],
+		api: "anthropic" as const,
+		provider: "anthropic" as const,
+		model: "claude-sonnet-4",
+		usage: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 0,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		},
+		stopReason: "stop" as const,
+		timestamp: Date.now(),
+	} as Message;
+}
 
 describe("render", () => {
 	describe("renderSubagentCall", () => {
@@ -69,9 +92,9 @@ describe("render", () => {
 		});
 
 		it("renders running state with tool calls", () => {
-			const result = { content: [], details, isError: false };
+			const result = { content: [], details };
 			const component = renderSubagentResult(
-				result as unknown as AgentToolResult<SubagentDetails>,
+				result as AgentToolResult<SubagentDetails>,
 				{ expanded: false },
 				fakeTheme as unknown as Theme,
 			);
@@ -88,16 +111,11 @@ describe("render", () => {
 		it("renders completed state with final message", () => {
 			details.status = "completed";
 			details.endedAt = Date.now();
-			details.messages = [
-				{
-					role: "assistant" as const,
-					content: [{ type: "text" as const, text: "Found 3 sites." }],
-				},
-			];
+			details.messages = [makeMessage("assistant", "Found 3 sites.")];
 
-			const result = { content: [], details, isError: false };
+			const result = { content: [], details };
 			const component = renderSubagentResult(
-				result as unknown as AgentToolResult<SubagentDetails>,
+				result as AgentToolResult<SubagentDetails>,
 				{ expanded: false },
 				fakeTheme as unknown as Theme,
 			);
@@ -111,9 +129,9 @@ describe("render", () => {
 			details.status = "aborted";
 			details.endedAt = Date.now();
 
-			const result = { content: [], details, isError: true };
+			const result = { content: [], details };
 			const component = renderSubagentResult(
-				result as unknown as AgentToolResult<SubagentDetails>,
+				result as AgentToolResult<SubagentDetails>,
 				{ expanded: false },
 				fakeTheme as unknown as Theme,
 			);
@@ -128,9 +146,9 @@ describe("render", () => {
 			details.endedAt = Date.now();
 			details.error = "Model not found";
 
-			const result = { content: [], details, isError: true };
+			const result = { content: [], details };
 			const component = renderSubagentResult(
-				result as unknown as AgentToolResult<SubagentDetails>,
+				result as AgentToolResult<SubagentDetails>,
 				{ expanded: false },
 				fakeTheme as unknown as Theme,
 			);
@@ -145,13 +163,11 @@ describe("render", () => {
 		it("shows expand hint for completed collapsed view", () => {
 			details.status = "completed";
 			details.endedAt = Date.now();
-			details.messages = [
-				{ role: "assistant" as const, content: [{ type: "text" as const, text: "Done" }] },
-			];
+			details.messages = [makeMessage("assistant", "Done")];
 
-			const result = { content: [], details, isError: false };
+			const result = { content: [], details };
 			const component = renderSubagentResult(
-				result as unknown as AgentToolResult<SubagentDetails>,
+				result as AgentToolResult<SubagentDetails>,
 				{ expanded: false },
 				fakeTheme as unknown as Theme,
 			);
@@ -163,7 +179,3 @@ describe("render", () => {
 		});
 	});
 });
-
-import type { AgentToolResult } from "@mariozechner/pi-agent-core";
-// Type imports
-import type { Theme } from "@mariozechner/pi-coding-agent";

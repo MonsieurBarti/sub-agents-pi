@@ -1,13 +1,14 @@
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import registerExtension from "../../src/index";
 
-function makeMockPi() {
+function makeMockPi(): ExtensionAPI {
 	return {
 		registerTool: vi.fn(),
 		registerShortcut: vi.fn(),
 		on: vi.fn(),
 		events: { on: vi.fn() },
-	} as unknown;
+	} as unknown as ExtensionAPI;
 }
 
 describe("extension registration", () => {
@@ -19,29 +20,19 @@ describe("extension registration", () => {
 	it("registers the subagent tool", () => {
 		const pi = makeMockPi();
 		registerExtension(pi);
-		expect((pi as { registerTool: ReturnType<typeof vi.fn> }).registerTool).toHaveBeenCalledWith(
-			expect.objectContaining({ name: "subagent" }),
-		);
+		expect(pi.registerTool).toHaveBeenCalledWith(expect.objectContaining({ name: "subagent" }));
 	});
 
 	it("registers the panel shortcut", () => {
 		const pi = makeMockPi();
 		registerExtension(pi);
-		expect(
-			(pi as { registerShortcut: ReturnType<typeof vi.fn> }).registerShortcut,
-		).toHaveBeenCalled();
+		expect(pi.registerShortcut).toHaveBeenCalled();
 	});
 
 	it("registers session lifecycle hooks", () => {
 		const pi = makeMockPi();
 		registerExtension(pi);
-		expect((pi as { on: ReturnType<typeof vi.fn> }).on).toHaveBeenCalledWith(
-			"session_start",
-			expect.any(Function),
-		);
-		expect((pi as { on: ReturnType<typeof vi.fn> }).on).toHaveBeenCalledWith(
-			"session_shutdown",
-			expect.any(Function),
-		);
+		expect(pi.on).toHaveBeenCalledWith("session_start", expect.any(Function));
+		expect(pi.on).toHaveBeenCalledWith("session_shutdown", expect.any(Function));
 	});
 });

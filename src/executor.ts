@@ -1,3 +1,4 @@
+import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { Message } from "@mariozechner/pi-ai";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { JobPool } from "./job-pool";
@@ -17,12 +18,6 @@ export interface CreateExecutorOptions {
 	piCommandOverride?: { command: string; baseArgs: string[] };
 }
 
-export interface ExecuteResult {
-	content: { type: "text"; text: string }[];
-	details: SubagentDetails;
-	isError: boolean;
-}
-
 export function createExecutor(options: CreateExecutorOptions) {
 	const { pool, piCommandOverride } = options;
 
@@ -31,9 +26,9 @@ export function createExecutor(options: CreateExecutorOptions) {
 			id: string,
 			params: SubagentParamsT,
 			signal: AbortSignal | undefined,
-			onUpdate: ((result: ExecuteResult) => void) | undefined,
+			onUpdate: ((result: AgentToolResult<SubagentDetails>) => void) | undefined,
 			ctx: ExtensionContext,
-		): Promise<ExecuteResult> {
+		): Promise<AgentToolResult<SubagentDetails>> {
 			const controller = new AbortController();
 			const combinedSignal = combineSignals(signal, controller.signal);
 
@@ -91,7 +86,6 @@ export function createExecutor(options: CreateExecutorOptions) {
 					onUpdate?.({
 						content: [{ type: "text", text: getFinalOutput(details.messages) || "(running...)" }],
 						details,
-						isError: false,
 					});
 				}
 			};
@@ -123,7 +117,6 @@ export function createExecutor(options: CreateExecutorOptions) {
 				return {
 					content: [{ type: "text", text: finalText }],
 					details,
-					isError: details.status !== "completed",
 				};
 			} catch (err) {
 				details.status = "failed";

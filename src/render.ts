@@ -1,6 +1,6 @@
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { Message } from "@mariozechner/pi-ai";
-import type { Theme } from "@mariozechner/pi-coding-agent";
+import { type Theme, type ThemeColor, getMarkdownTheme } from "@mariozechner/pi-coding-agent";
 import { Box, Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import { formatDuration, formatTokens, formatToolCall, formatUsageStats } from "./formatters";
 import { applyThinkingSuffix } from "./pi-args";
@@ -15,7 +15,9 @@ export function renderSubagentCall(args: SubagentParamsT, theme: Theme): Contain
 		theme.fg("accent", label) +
 		(modelStr ? theme.fg("muted", ` · ${modelStr}`) : "");
 
-	return new Text(text, 0, 0);
+	const container = new Container();
+	container.addChild(new Text(text, 0, 0));
+	return container;
 }
 
 export function renderSubagentResult(
@@ -24,17 +26,21 @@ export function renderSubagentResult(
 	theme: Theme,
 ): Container {
 	const details = result.details;
-	if (!details) return new Text("(no details)", 0, 0);
+	if (!details) {
+		const container = new Container();
+		container.addChild(new Text("(no details)", 0, 0));
+		return container;
+	}
 
 	const container = new Container();
 	container.addChild(new Spacer(1));
 
 	const boxTheme =
 		details.status === "running"
-			? "toolPendingBg"
-			: result.isError
-				? "toolErrorBg"
-				: "toolSuccessBg";
+			? ("toolPendingBg" as const)
+			: details.status === "failed" || details.status === "aborted"
+				? ("toolErrorBg" as const)
+				: ("toolSuccessBg" as const);
 
 	const box = new Box(1, 1, (text) => theme.bg(boxTheme, text));
 	box.addChild(renderHeader(details, theme));
@@ -86,24 +92,23 @@ function renderHeader(details: SubagentDetails, theme: Theme): Container {
 
 function renderCollapsedBody(details: SubagentDetails, theme: Theme): Container {
 	const container = new Container();
+	const themeFg = (c: ThemeColor, t: string) => theme.fg(c, t);
 
 	if (details.status === "running") {
 		// Show recent tool calls
 		const recentCalls = details.toolCalls.slice(-10);
 		for (const call of recentCalls) {
-			const formatted = formatToolCall(call.name, call.args, (c, t) => theme.fg(c, t));
+			const formatted = formatToolCall(call.name, call.args, themeFg);
 			container.addChild(new Text(`  ${formatted}`, 0, 0));
 		}
 		if (details.currentTool) {
-			const formatted = formatToolCall(details.currentTool.name, details.currentTool.args, (c, t) =>
-				theme.fg(c, t),
-			);
+			const formatted = formatToolCall(details.currentTool.name, details.currentTool.args, themeFg);
 			container.addChild(new Text(theme.fg("warning", "▸ ") + formatted, 0, 0));
 		}
 	} else if (details.status === "aborted") {
 		const recentCalls = details.toolCalls.slice(-10);
 		for (const call of recentCalls) {
-			const formatted = formatToolCall(call.name, call.args, (c, t) => theme.fg(c, t));
+			const formatted = formatToolCall(call.name, call.args, themeFg);
 			container.addChild(new Text(`  ${formatted}`, 0, 0));
 		}
 		container.addChild(new Spacer(1));
@@ -128,6 +133,7 @@ function renderCollapsedBody(details: SubagentDetails, theme: Theme): Container 
 
 function renderExpandedBody(details: SubagentDetails, theme: Theme): Container {
 	const container = new Container();
+	const themeFg = (c: ThemeColor, t: string) => theme.fg(c, t);
 
 	// Task
 	container.addChild(new Text(theme.fg("muted", "Task:"), 0, 0));
@@ -147,7 +153,7 @@ function renderExpandedBody(details: SubagentDetails, theme: Theme): Container {
 	if (details.toolCalls.length > 0) {
 		container.addChild(new Text(theme.fg("muted", "Tool calls:"), 0, 0));
 		for (const call of details.toolCalls) {
-			const formatted = formatToolCall(call.name, call.args, (c, t) => theme.fg(c, t));
+			const formatted = formatToolCall(call.name, call.args, themeFg);
 			container.addChild(new Text(`  ${formatted}`, 0, 0));
 		}
 		container.addChild(new Spacer(1));
@@ -156,7 +162,7 @@ function renderExpandedBody(details: SubagentDetails, theme: Theme): Container {
 	// Final message as Markdown
 	const finalText = getFinalOutput(details.messages);
 	if (finalText) {
-		container.addChild(new Markdown(finalText, theme));
+		container.addChild(new Markdown(finalText, 0, 0, getMarkdownTheme()));
 	}
 
 	// Usage stats

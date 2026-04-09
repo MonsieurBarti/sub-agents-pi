@@ -1,4 +1,4 @@
-import type { Theme } from "@mariozechner/pi-coding-agent";
+import { type Theme, type ThemeColor, getMarkdownTheme } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import { matchesKey } from "@mariozechner/pi-tui";
 import type { Component } from "@mariozechner/pi-tui";
@@ -169,6 +169,7 @@ export class SubagentPanel implements Component {
 	private renderDetail(job: SubagentJob, _width: number): Container {
 		const container = new Container();
 		const d = job.result;
+		const themeFg = (c: ThemeColor, t: string) => this.theme.fg(c, t);
 
 		// Model + elapsed
 		const elapsed = d.endedAt
@@ -186,13 +187,11 @@ export class SubagentPanel implements Component {
 		if (d.toolCalls.length > 0 || d.currentTool) {
 			container.addChild(new Text(this.theme.fg("muted", "Tool calls:"), 0, 0));
 			for (const call of d.toolCalls.slice(-5)) {
-				const formatted = formatToolCall(call.name, call.args, (c, t) => this.theme.fg(c, t));
+				const formatted = formatToolCall(call.name, call.args, themeFg);
 				container.addChild(new Text(`  ${formatted}`, 0, 0));
 			}
 			if (d.currentTool) {
-				const formatted = formatToolCall(d.currentTool.name, d.currentTool.args, (c, t) =>
-					this.theme.fg(c, t),
-				);
+				const formatted = formatToolCall(d.currentTool.name, d.currentTool.args, themeFg);
 				container.addChild(new Text(this.theme.fg("warning", "▸ ") + formatted, 0, 0));
 			}
 			container.addChild(new Spacer(1));
@@ -201,7 +200,7 @@ export class SubagentPanel implements Component {
 		// Final message
 		const finalText = this.getFinalOutput(d.messages);
 		if (finalText && d.status !== "running") {
-			container.addChild(new Markdown(finalText, this.theme));
+			container.addChild(new Markdown(finalText, 0, 0, getMarkdownTheme()));
 		}
 
 		// Usage

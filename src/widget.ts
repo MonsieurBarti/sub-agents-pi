@@ -1,6 +1,6 @@
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
-import type { TUI, Theme } from "@mariozechner/pi-tui";
+import type { TUI } from "@mariozechner/pi-tui";
 import type { JobPool } from "./job-pool";
 import { WIDGET_KEY } from "./types";
 

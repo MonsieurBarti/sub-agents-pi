@@ -32,8 +32,10 @@ describe("executor", () => {
 			{ cwd: "/tmp", hasUI: false } as ExtensionContext,
 		);
 
-		expect(result.isError).toBe(false);
-		expect(result.content[0]?.text).toContain("Found 2 matches.");
+		expect(result.details?.status).toBe("completed");
+		expect(result.content[0]?.type === "text" && result.content[0].text).toContain(
+			"Found 2 matches.",
+		);
 		expect(pool.list()).toHaveLength(1);
 		expect(pool.list()[0]?.status).toBe("completed");
 		expect(updates.length).toBeGreaterThan(0);
@@ -109,7 +111,7 @@ describe("executor", () => {
 		controller.abort();
 
 		const result = await executePromise;
-		expect(result.isError).toBe(true);
+		expect(result.details?.status).toBe("aborted");
 		expect(pool.get("test-6")?.status).toBe("aborted");
 	});
 });

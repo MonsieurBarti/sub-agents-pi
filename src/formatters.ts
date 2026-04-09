@@ -1,4 +1,5 @@
 import * as os from "node:os";
+import type { ThemeColor } from "@mariozechner/pi-coding-agent";
 
 export function formatTokens(count: number): string {
 	if (count < 1000) return count.toString();
@@ -45,7 +46,7 @@ function shortenPath(p: string): string {
 export function formatToolCall(
 	toolName: string,
 	args: Record<string, unknown>,
-	themeFg: (color: string, text: string) => string,
+	themeFg: (color: ThemeColor, text: string) => string,
 ): string {
 	switch (toolName) {
 		case "bash": {

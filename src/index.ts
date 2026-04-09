@@ -26,7 +26,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	// Tool registration
 	// -----------------------------------------------------------------
 
-	const tool = defineTool({
+	const tool = defineTool<typeof SubagentParams, SubagentDetails>({
 		name: "subagent",
 		label: "Subagent",
 		description:
@@ -63,7 +63,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	// -----------------------------------------------------------------
 
 	pi.registerShortcut("alt+s", {
-		id: "subagents.panel.open",
 		description: "Open the sub-agents panel",
 		handler: async (ctx) => {
 			await ctx.ui.custom<void>((_tui, theme, _kb, done) => new SubagentPanel(pool, theme, done), {

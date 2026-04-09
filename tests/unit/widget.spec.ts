@@ -1,5 +1,8 @@
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { TUI } from "@mariozechner/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { JobPool } from "../../src/job-pool";
+import type { SubagentDetails, SubagentJob } from "../../src/types";
 import { WIDGET_KEY } from "../../src/types";
 import { updateWidget } from "../../src/widget";
 
@@ -10,6 +13,19 @@ function makeContext() {
 			setWidget: vi.fn(),
 		},
 	} as unknown as ExtensionContext;
+}
+
+function makeJob(overrides: Partial<SubagentJob> = {}): SubagentJob {
+	return {
+		id: "1",
+		label: "a",
+		model: null,
+		status: "running",
+		startedAt: Date.now(),
+		result: {} as SubagentDetails,
+		abort: vi.fn(),
+		...overrides,
+	} as SubagentJob;
 }
 
 describe("widget", () => {
@@ -24,15 +40,7 @@ describe("widget", () => {
 		it("shows running count", () => {
 			const ctx = makeContext();
 			const pool = new JobPool();
-			pool.add({
-				id: "1",
-				label: "a",
-				model: null,
-				status: "running",
-				startedAt: Date.now(),
-				result: {} as SubagentDetails,
-				abort: vi.fn(),
-			});
+			pool.add(makeJob({ status: "running" }));
 
 			updateWidget(ctx, pool);
 
@@ -41,7 +49,11 @@ describe("widget", () => {
 			});
 
 			// Test the factory function
-			const factory = ctx.ui.setWidget.mock.calls[0][1];
+			const calls = (ctx.ui.setWidget as ReturnType<typeof vi.fn>).mock.calls;
+			const factory = calls[0]?.[1] as (
+				tui: TUI,
+				theme: { fg: (c: string, t: string) => string },
+			) => { render: (w: number) => string[] };
 			const component = factory(null as unknown as TUI, { fg: (_c: string, t: string) => t });
 			const lines = component.render(80);
 			expect(lines.join("\n")).toContain("1 running");
@@ -50,19 +62,15 @@ describe("widget", () => {
 		it("shows done count", () => {
 			const ctx = makeContext();
 			const pool = new JobPool();
-			pool.add({
-				id: "1",
-				label: "a",
-				model: null,
-				status: "completed",
-				startedAt: Date.now(),
-				result: {} as SubagentDetails,
-				abort: vi.fn(),
-			});
+			pool.add(makeJob({ id: "1", status: "completed" }));
 
 			updateWidget(ctx, pool);
 
-			const factory = ctx.ui.setWidget.mock.calls[0][1];
+			const calls = (ctx.ui.setWidget as ReturnType<typeof vi.fn>).mock.calls;
+			const factory = calls[0]?.[1] as (
+				tui: TUI,
+				theme: { fg: (c: string, t: string) => string },
+			) => { render: (w: number) => string[] };
 			const component = factory(null as unknown as TUI, { fg: (_c: string, t: string) => t });
 			const lines = component.render(80);
 			expect(lines.join("\n")).toContain("1 done");
@@ -71,28 +79,16 @@ describe("widget", () => {
 		it("shows both running and done", () => {
 			const ctx = makeContext();
 			const pool = new JobPool();
-			pool.add({
-				id: "1",
-				label: "a",
-				model: null,
-				status: "running",
-				startedAt: Date.now(),
-				result: {} as SubagentDetails,
-				abort: vi.fn(),
-			});
-			pool.add({
-				id: "2",
-				label: "b",
-				model: null,
-				status: "completed",
-				startedAt: Date.now(),
-				result: {} as SubagentDetails,
-				abort: vi.fn(),
-			});
+			pool.add(makeJob({ id: "1", status: "running" }));
+			pool.add(makeJob({ id: "2", status: "completed" }));
 
 			updateWidget(ctx, pool);
 
-			const factory = ctx.ui.setWidget.mock.calls[0][1];
+			const calls = (ctx.ui.setWidget as ReturnType<typeof vi.fn>).mock.calls;
+			const factory = calls[0]?.[1] as (
+				tui: TUI,
+				theme: { fg: (c: string, t: string) => string },
+			) => { render: (w: number) => string[] };
 			const component = factory(null as unknown as TUI, { fg: (_c: string, t: string) => t });
 			const lines = component.render(80);
 			expect(lines.join("\n")).toContain("1 running");
@@ -102,23 +98,10 @@ describe("widget", () => {
 		it("does nothing when hasUI is false", () => {
 			const ctx = { hasUI: false, ui: { setWidget: vi.fn() } } as unknown as ExtensionContext;
 			const pool = new JobPool();
-			pool.add({
-				id: "1",
-				label: "a",
-				model: null,
-				status: "running",
-				startedAt: Date.now(),
-				result: {} as SubagentDetails,
-				abort: vi.fn(),
-			});
+			pool.add(makeJob());
 
 			updateWidget(ctx, pool);
 			expect(ctx.ui.setWidget).not.toHaveBeenCalled();
 		});
 	});
 });
-
-// Type imports
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { TUI } from "@mariozechner/pi-tui";
-import type { SubagentDetails } from "../../src/types";
