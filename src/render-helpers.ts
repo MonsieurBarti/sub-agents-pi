@@ -1,6 +1,6 @@
 import type { Theme } from "@mariozechner/pi-coding-agent";
 import { visibleWidth } from "@mariozechner/pi-tui";
-import type { SubagentJob } from "./types";
+import { type SubagentJob, getCurrentTool } from "./types";
 
 /**
  * Rendering primitives ported from nicobailon/pi-subagents.
@@ -150,7 +150,8 @@ export function computeWidgetHash(jobs: readonly SubagentJob[]): string {
 	return jobs
 		.map((job) => {
 			const d = job.result;
-			const currentToolId = d.currentTool?.toolCallId ?? d.currentTool?.name ?? "";
+			const current = getCurrentTool(d);
+			const currentToolId = current?.toolCallId ?? current?.name ?? "";
 			const turns = d.usage.turns;
 			const input = d.usage.input;
 			const output = d.usage.output;

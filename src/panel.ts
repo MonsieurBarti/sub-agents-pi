@@ -1,10 +1,10 @@
 import { type Theme, type ThemeColor, getMarkdownTheme } from "@mariozechner/pi-coding-agent";
-import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
-import { matchesKey } from "@mariozechner/pi-tui";
+import { Markdown, matchesKey, visibleWidth } from "@mariozechner/pi-tui";
 import type { Component } from "@mariozechner/pi-tui";
-import { formatDuration, formatToolCall, formatUsageStats } from "./formatters";
+import { formatDuration, formatFinalOutput, formatToolCall, formatUsageStats } from "./formatters";
 import type { JobPool } from "./job-pool";
-import type { SubagentJob } from "./types";
+import { pad, renderFooter, renderHeader, truncLine } from "./render-helpers";
+import { type SubagentJob, getCurrentTool } from "./types";
 
 /**
  * Minimal slice of the pi-tui TUI interface we depend on. Using a narrow
@@ -15,22 +15,44 @@ export interface PanelTUI {
 	requestRender(): void;
 }
 
+/**
+ * Callback used to prompt the user before destructive actions. In production
+ * this is `ctx.ui.confirm`; tests can pass a vi.fn() to drive the flow.
+ */
+export type ConfirmFn = (title: string, message: string) => Promise<boolean>;
+
 export class SubagentPanel implements Component {
 	private selectedIndex = 0;
 	private zoomed = false;
 	private handler: () => void;
+	/** Set while a confirm dialog for this panel is in flight — blocks re-entry. */
+	private confirmInFlight = false;
 
 	constructor(
 		private pool: JobPool,
 		private tui: PanelTUI,
 		private theme: Theme,
 		private done: () => void,
+		private confirm: ConfirmFn,
 	) {
 		// Pool changes arrive asynchronously from background sub-agents. The
 		// TUI only renders on input by default, so we must explicitly request
 		// a render to reflect state changes while the panel is open.
-		this.handler = () => this.tui.requestRender();
+		this.handler = () => {
+			this.clampSelection();
+			this.tui.requestRender();
+		};
 		this.pool.on("change", this.handler);
+	}
+
+	private clampSelection(): void {
+		const len = this.pool.list().length;
+		if (len === 0) {
+			this.selectedIndex = 0;
+			return;
+		}
+		if (this.selectedIndex < 0) this.selectedIndex = 0;
+		if (this.selectedIndex >= len) this.selectedIndex = len - 1;
 	}
 
 	// Test-only accessors
@@ -74,10 +96,23 @@ export class SubagentPanel implements Component {
 		}
 
 		if (matchesKey(data, "k")) {
+			if (this.confirmInFlight) return;
 			const job = jobs[this.selectedIndex];
-			if (job && job.status === "running") {
-				this.pool.kill(job.id);
-			}
+			if (!job || job.status !== "running") return;
+
+			this.confirmInFlight = true;
+			const confirmPromise = this.confirm(
+				"Kill sub-agent?",
+				`${job.label} will receive SIGTERM (then SIGKILL after 3s).`,
+			);
+			confirmPromise
+				.then((ok) => {
+					if (ok) this.pool.kill(job.id);
+				})
+				.finally(() => {
+					this.confirmInFlight = false;
+					this.tui.requestRender();
+				});
 			return;
 		}
 	}
@@ -89,152 +124,161 @@ export class SubagentPanel implements Component {
 			return [this.theme.fg("muted", "No sub-agents.")];
 		}
 
-		this.selectedIndex = Math.min(this.selectedIndex, jobs.length - 1);
+		// Defensive: fall back to index 0 rather than crashing if something
+		// mutated the pool between clamp and render.
+		const index = Math.max(0, Math.min(this.selectedIndex, jobs.length - 1));
+		const selected = jobs[index];
+		if (!selected) {
+			return [this.theme.fg("muted", "No sub-agents.")];
+		}
 
-		return this.zoomed
-			? this.renderZoomed(jobs[this.selectedIndex], width)
-			: this.renderSplit(jobs, width);
+		return this.zoomed ? this.renderZoomed(selected, width) : this.renderSplit(jobs, width);
 	}
 
 	private renderSplit(jobs: SubagentJob[], width: number): string[] {
-		const container = new Container();
+		const lines: string[] = [];
+		lines.push(renderHeader("🧬 Sub-agents", width, this.theme));
 
-		// Header
-		container.addChild(new Text(this.theme.bold("🧬 Sub-agents"), 0, 0));
-		container.addChild(new Spacer(1));
+		// Two-pane layout with a border between them. Total width budget:
+		//   │ leftPane │ rightPane │
+		// = 1 + leftW + 1 + rightW + 1 border cells = width
+		const innerW = Math.max(0, width - 4); // subtract 4 border chars
+		const leftW = Math.max(12, Math.floor(innerW * 0.35));
+		const rightW = Math.max(0, innerW - leftW);
 
-		// Two-pane layout (simplified: left = list, right = detail)
-		const leftWidth = Math.floor(width * 0.35);
-		const rightWidth = width - leftWidth - 3;
+		const leftLines = this.renderListPane(jobs, leftW);
+		const focus = jobs[this.selectedIndex] ?? jobs[0];
+		if (!focus) return [];
+		const rightLines = this.renderDetailLines(focus, rightW);
 
-		// Left pane: list
-		const leftPane = new Container();
+		const rowCount = Math.max(leftLines.length, rightLines.length);
+		const borderFg = (t: string) => this.theme.fg("border", t);
+		for (let i = 0; i < rowCount; i++) {
+			const left = leftLines[i] ?? "";
+			const right = rightLines[i] ?? "";
+			lines.push(
+				borderFg("│") +
+					pad(truncLine(left, leftW), leftW) +
+					borderFg("│") +
+					pad(truncLine(right, rightW), rightW) +
+					borderFg("│"),
+			);
+		}
+
+		lines.push(renderFooter("↑↓ select · enter zoom · k kill · esc close", width, this.theme));
+		return lines;
+	}
+
+	private renderListPane(jobs: SubagentJob[], width: number): string[] {
+		const lines: string[] = [];
 		for (let i = 0; i < jobs.length; i++) {
 			const job = jobs[i];
 			if (!job) continue;
-			const prefix = i === this.selectedIndex ? this.theme.fg("warning", "▸") : " ";
-			const icon =
-				job.status === "running"
-					? "⏳"
-					: job.status === "completed"
-						? "✓"
-						: job.status === "aborted"
-							? "⊘"
-							: "✗";
-			leftPane.addChild(new Text(`${prefix}${icon} ${job.label}`, 0, 0));
-			leftPane.addChild(new Text(this.theme.fg("muted", `   ${job.model || "default"}`), 0, 0));
+			const selected = i === this.selectedIndex;
+			const prefix = selected ? this.theme.fg("warning", "▸") : " ";
+			const icon = statusIcon(job.status);
+			const label = selected ? this.theme.bold(job.label) : this.theme.fg("toolTitle", job.label);
+			lines.push(`${prefix}${icon} ${label}`);
+			lines.push(this.theme.fg("muted", `  ${job.model || "default"}`));
 			const elapsed = job.endedAt
 				? formatDuration(job.endedAt - job.startedAt)
 				: formatDuration(Date.now() - job.startedAt);
-			leftPane.addChild(new Text(this.theme.fg("dim", `   ${elapsed}`), 0, 0));
+			lines.push(this.theme.fg("dim", `  ${elapsed}`));
+			// visual separator, unless last row — render-helpers `pad` in
+			// renderSplit will fill empty cells.
+			if (i < jobs.length - 1) lines.push("");
 		}
-
-		// Right pane: detail
-		const selectedJob = jobs[this.selectedIndex];
-		if (!selectedJob) {
-			return container.render(width);
-		}
-		const rightPane = this.renderDetail(selectedJob, rightWidth);
-
-		// Combine panes (simplified: render both and join lines)
-		const leftLines = leftPane.render(leftWidth);
-		const rightLines = rightPane.render(rightWidth);
-
-		const maxLines = Math.max(leftLines.length, rightLines.length);
-		for (let i = 0; i < maxLines; i++) {
-			const left = leftLines[i] ?? "";
-			const right = rightLines[i] ?? "";
-			container.addChild(new Text(`${left.padEnd(leftWidth)} │ ${right}`, 0, 0));
-		}
-
-		// Footer
-		container.addChild(new Spacer(1));
-		container.addChild(new Text("↑↓ select · enter zoom · k kill · esc close", 0, 0));
-
-		return container.render(width);
+		// Drop cells that exceed the pane width to keep the border aligned.
+		return lines.map((l) => (visibleWidth(l) > width ? truncLine(l, width) : l));
 	}
 
 	private renderZoomed(job: SubagentJob, width: number): string[] {
-		const container = new Container();
+		const lines: string[] = [];
+		lines.push(renderHeader(`${statusIcon(job.status)} ${job.label}`, width, this.theme));
 
-		// Header
-		const icon =
-			job.status === "running"
-				? "⏳"
-				: job.status === "completed"
-					? "✓"
-					: job.status === "aborted"
-						? "⊘"
-						: "✗";
-		container.addChild(new Text(this.theme.bold(`${icon} ${job.label}`), 0, 0));
-		container.addChild(new Spacer(1));
+		const innerW = Math.max(0, width - 2);
+		const borderFg = (t: string) => this.theme.fg("border", t);
+		const detailLines = this.renderDetailLines(job, innerW);
+		for (const l of detailLines) {
+			lines.push(borderFg("│") + pad(truncLine(l, innerW), innerW) + borderFg("│"));
+		}
 
-		// Detail
-		container.addChild(this.renderDetail(job, width));
-
-		// Footer
-		container.addChild(new Spacer(1));
-		container.addChild(new Text("esc back · k kill", 0, 0));
-
-		return container.render(width);
+		lines.push(renderFooter("esc back · k kill", width, this.theme));
+		return lines;
 	}
 
-	private renderDetail(job: SubagentJob, _width: number): Container {
-		const container = new Container();
+	private renderDetailLines(job: SubagentJob, width: number): string[] {
+		const lines: string[] = [];
 		const d = job.result;
 		const themeFg = (c: ThemeColor, t: string) => this.theme.fg(c, t);
 
-		// Model + elapsed
+		// Header row: model · status · elapsed
 		const elapsed = d.endedAt
 			? formatDuration(d.endedAt - d.startedAt)
 			: formatDuration(Date.now() - d.startedAt);
-		container.addChild(new Text(`${d.model || "default"} · ${d.status} · ${elapsed}`, 0, 0));
-		container.addChild(new Spacer(1));
+		const statusColor =
+			d.status === "running"
+				? "warning"
+				: d.status === "completed"
+					? "success"
+					: d.status === "aborted"
+						? "muted"
+						: "error";
+		lines.push(
+			this.theme.fg("accent", d.model || "default") +
+				this.theme.fg("dim", " · ") +
+				this.theme.fg(statusColor, d.status) +
+				this.theme.fg("dim", " · ") +
+				this.theme.fg("muted", elapsed),
+		);
+		lines.push("");
 
-		// Task
-		container.addChild(new Text(this.theme.fg("muted", "Task:"), 0, 0));
-		container.addChild(new Text(d.task.slice(0, 100), 0, 0));
-		container.addChild(new Spacer(1));
+		// Task preview
+		lines.push(this.theme.fg("muted", "Task:"));
+		lines.push(d.task.length > 120 ? `${d.task.slice(0, 120)}…` : d.task);
+		lines.push("");
 
-		// Tool calls
-		if (d.toolCalls.length > 0 || d.currentTool) {
-			container.addChild(new Text(this.theme.fg("muted", "Tool calls:"), 0, 0));
+		// Tool calls (recent + current)
+		const current = getCurrentTool(d);
+		if (d.toolCalls.length > 0 || current) {
+			lines.push(this.theme.fg("muted", "Tool calls:"));
 			for (const call of d.toolCalls.slice(-5)) {
-				const formatted = formatToolCall(call.name, call.args, themeFg);
-				container.addChild(new Text(`  ${formatted}`, 0, 0));
+				lines.push(`  ${formatToolCall(call.name, call.args, themeFg)}`);
 			}
-			if (d.currentTool) {
-				const formatted = formatToolCall(d.currentTool.name, d.currentTool.args, themeFg);
-				container.addChild(new Text(this.theme.fg("warning", "▸ ") + formatted, 0, 0));
+			if (current) {
+				lines.push(
+					this.theme.fg("warning", "▸ ") + formatToolCall(current.name, current.args, themeFg),
+				);
 			}
-			container.addChild(new Spacer(1));
+			lines.push("");
 		}
 
-		// Final message
-		const finalText = this.getFinalOutput(d.messages);
+		// Error (if failed)
+		if (d.status === "failed" && d.error) {
+			lines.push(this.theme.fg("error", `Error: ${d.error}`));
+			if (d.stderr) {
+				const stderrHead = d.stderr.slice(0, 200);
+				lines.push(this.theme.fg("muted", stderrHead));
+			}
+			lines.push("");
+		}
+
+		// Final message — only outside running state
+		const finalText = formatFinalOutput(d.messages);
 		if (finalText && d.status !== "running") {
-			container.addChild(new Markdown(finalText, 0, 0, getMarkdownTheme()));
+			// Markdown component renders internally; we just capture its lines.
+			const md = new Markdown(finalText, 0, 0, getMarkdownTheme());
+			const mdLines = md.render(Math.max(20, width));
+			for (const l of mdLines) lines.push(l);
+			lines.push("");
 		}
 
 		// Usage
 		if (d.usage.turns > 0) {
-			container.addChild(new Spacer(1));
-			container.addChild(new Text(this.theme.fg("muted", formatUsageStats(d.usage)), 0, 0));
+			lines.push(this.theme.fg("muted", formatUsageStats(d.usage)));
 		}
 
-		return container;
-	}
-
-	private getFinalOutput(messages: SubagentJob["result"]["messages"]): string {
-		for (let i = messages.length - 1; i >= 0; i--) {
-			const msg = messages[i];
-			if (msg?.role === "assistant") {
-				for (const part of msg.content) {
-					if (part.type === "text") return part.text;
-				}
-			}
-		}
-		return "";
+		return lines;
 	}
 
 	invalidate(): void {
@@ -245,5 +289,18 @@ export class SubagentPanel implements Component {
 
 	dispose(): void {
 		this.pool.off("change", this.handler);
+	}
+}
+
+function statusIcon(status: SubagentJob["status"]): string {
+	switch (status) {
+		case "running":
+			return "⏳";
+		case "completed":
+			return "✓";
+		case "aborted":
+			return "⊘";
+		case "failed":
+			return "✗";
 	}
 }

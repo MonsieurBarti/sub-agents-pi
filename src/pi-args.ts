@@ -1,24 +1,9 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { THINKING_LEVELS } from "./types";
+import { applyThinkingSuffix } from "./formatters";
 
 const TASK_ARG_LIMIT = 8000;
-
-export function applyThinkingSuffix(
-	model: string | undefined,
-	thinking: string | undefined,
-): string | undefined {
-	if (!model || !thinking || thinking === "off") return model;
-	const colonIdx = model.lastIndexOf(":");
-	if (
-		colonIdx !== -1 &&
-		THINKING_LEVELS.includes(model.substring(colonIdx + 1) as (typeof THINKING_LEVELS)[number])
-	) {
-		return model;
-	}
-	return `${model}:${thinking}`;
-}
 
 export interface BuildPiArgsInput {
 	task: string;

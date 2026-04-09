@@ -66,7 +66,10 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		description: "Open the sub-agents panel",
 		handler: async (ctx) => {
 			await ctx.ui.custom<void>(
-				(tui, theme, _kb, done) => new SubagentPanel(pool, tui, theme, done),
+				(tui, theme, _kb, done) =>
+					new SubagentPanel(pool, tui, theme, done, (title, message) =>
+						ctx.ui.confirm(title, message),
+					),
 				{
 					overlay: true,
 					overlayOptions: { anchor: "center", width: "80%", maxHeight: "75%" },

@@ -127,7 +127,7 @@ describe("render-helpers", () => {
 					task: "t",
 					systemPrompt: "",
 					toolCalls: [],
-					currentTool: null,
+					currentTools: new Map(),
 					usage: {
 						input: 0,
 						output: 0,

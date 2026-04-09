@@ -2,9 +2,9 @@ import * as fs from "node:fs";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { Message } from "@mariozechner/pi-ai";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { applyThinkingSuffix, formatFinalOutput } from "./formatters";
 import type { JobPool } from "./job-pool";
 import { buildPiArgs, cleanupTempDir } from "./pi-args";
-import { applyThinkingSuffix } from "./pi-args";
 import { runChildPi } from "./pi-spawn";
 import type { SubagentDetails, SubagentJob, SubagentParamsT, ToolCallRecord } from "./types";
 
@@ -39,7 +39,7 @@ export function createExecutor(options: CreateExecutorOptions) {
 				task: params.task,
 				systemPrompt: params.system_prompt,
 				toolCalls: [],
-				currentTool: null,
+				currentTools: new Map(),
 				usage: {
 					input: 0,
 					output: 0,
@@ -90,17 +90,25 @@ export function createExecutor(options: CreateExecutorOptions) {
 				});
 				tempDir = built.tempDir;
 
-				// Throttle updates
+				// Throttle mid-stream updates to ~20Hz. The terminal state
+				// transition (running → completed/failed/aborted) always flushes
+				// unconditionally below, so no observer misses the final snapshot
+				// regardless of throttle timing.
 				let lastUpdate = 0;
 				const throttleMs = 50;
+				const emitSnapshot = () => {
+					onUpdate?.({
+						content: [
+							{ type: "text", text: formatFinalOutput(details.messages) || "(running...)" },
+						],
+						details,
+					});
+				};
 				const fireUpdate = () => {
 					const now = Date.now();
 					if (now - lastUpdate >= throttleMs) {
 						lastUpdate = now;
-						onUpdate?.({
-							content: [{ type: "text", text: getFinalOutput(details.messages) || "(running...)" }],
-							details,
-						});
+						emitSnapshot();
 					}
 				};
 
@@ -123,9 +131,13 @@ export function createExecutor(options: CreateExecutorOptions) {
 					details.error = result.stderr.trim() || `Child pi exited with code ${result.exitCode}`;
 				}
 
-				const finalText = getFinalOutput(details.messages) || details.error || "(no output)";
+				const finalText = formatFinalOutput(details.messages) || details.error || "(no output)";
 
 				pool.update(id, { status: details.status, endedAt: details.endedAt });
+
+				// Trailing-edge flush: ensure onUpdate observers see the terminal
+				// status even if the last event landed inside the throttle window.
+				emitSnapshot();
 
 				return {
 					content: [{ type: "text", text: finalText }],
@@ -157,26 +169,40 @@ function handleEvent(
 	fireUpdate: () => void,
 ): void {
 	if (evt.type === "tool_execution_start" && typeof evt.toolName === "string") {
+		// Track by toolCallId so interleaved starts don't clobber each other.
+		// Pi always sends a string toolCallId; synthesize one if missing so we
+		// can still match a later end event (best-effort fallback).
+		const toolCallId = typeof evt.toolCallId === "string" ? evt.toolCallId : `__anon_${Date.now()}`;
 		const record: ToolCallRecord = {
 			name: evt.toolName,
-			toolCallId: typeof evt.toolCallId === "string" ? evt.toolCallId : undefined,
+			toolCallId,
 			args: (evt.args as Record<string, unknown>) ?? {},
 			startedAt: Date.now(),
 		};
-		details.currentTool = record;
+		details.currentTools.set(toolCallId, record);
 		fireUpdate();
 		return;
 	}
 
 	if (evt.type === "tool_execution_end") {
-		// Capture result + isError from the end event (real pi AgentEvent shape).
-		// Match by toolCallId when present; otherwise fall back to the last
-		// in-flight record (single-tool-at-a-time path).
+		// Match by toolCallId against the in-flight map. If no match (shouldn't
+		// happen with a well-behaved pi stream), fall back to any single
+		// in-flight record or synthesize one so we still capture the result.
 		const evtCallId = typeof evt.toolCallId === "string" ? evt.toolCallId : undefined;
-		let record = details.currentTool;
-		if (evtCallId && record?.toolCallId !== evtCallId) {
-			// Out-of-order end for a different call — ignore currentTool and create
-			// a synthetic record so we still capture the result.
+		let record: ToolCallRecord | undefined;
+		if (evtCallId && details.currentTools.has(evtCallId)) {
+			record = details.currentTools.get(evtCallId);
+			details.currentTools.delete(evtCallId);
+		} else if (!evtCallId && details.currentTools.size === 1) {
+			// Exactly one in-flight and no id to disambiguate: assume it's ours.
+			const [onlyId, only] = details.currentTools.entries().next().value ?? [];
+			if (onlyId) {
+				record = only;
+				details.currentTools.delete(onlyId);
+			}
+		} else if (evtCallId) {
+			// Orphan end event — synthesize a minimal record so the result is
+			// still visible in the transcript.
 			record = {
 				name: typeof evt.toolName === "string" ? evt.toolName : "unknown",
 				toolCallId: evtCallId,
@@ -184,13 +210,13 @@ function handleEvent(
 				startedAt: Date.now(),
 			};
 		}
+
 		if (record) {
 			record.endedAt = Date.now();
 			if ("result" in evt) record.result = evt.result;
 			if (typeof evt.isError === "boolean") record.isError = evt.isError;
 			details.toolCalls.push(record);
 		}
-		details.currentTool = null;
 		fireUpdate();
 		return;
 	}
@@ -228,18 +254,6 @@ function handleEvent(
 		}
 		fireUpdate();
 	}
-}
-
-function getFinalOutput(messages: Message[]): string {
-	for (let i = messages.length - 1; i >= 0; i--) {
-		const msg = messages[i];
-		if (msg?.role === "assistant") {
-			for (const part of msg.content) {
-				if (part.type === "text") return part.text;
-			}
-		}
-	}
-	return "";
 }
 
 /**

@@ -21,7 +21,7 @@ describe("types", () => {
 			task: "find stuff",
 			systemPrompt: "you are a scout",
 			toolCalls: [],
-			currentTool: null,
+			currentTools: new Map(),
 			usage: {
 				input: 0,
 				output: 0,

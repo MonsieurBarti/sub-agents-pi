@@ -54,12 +54,30 @@ export interface SubagentDetails {
 	task: string;
 	systemPrompt: string;
 	toolCalls: ToolCallRecord[];
-	currentTool: ToolCallRecord | null;
+	/**
+	 * In-flight tool calls keyed by toolCallId. Interleaved starts/ends from
+	 * pi's agent loop require we match on id rather than assume strict pairing.
+	 * For display (e.g. the "▸ current tool" indicator), callers typically show
+	 * the most-recently-started entry — see getCurrentTool().
+	 */
+	currentTools: Map<string, ToolCallRecord>;
 	usage: UsageStats;
 	messages: Message[];
 	cwd: string;
 	stderr?: string;
 	error?: string;
+}
+
+/**
+ * Return the most-recently-started in-flight tool, or null if none.
+ * Safe to call from render paths; preserves Map iteration order.
+ */
+export function getCurrentTool(details: SubagentDetails): ToolCallRecord | null {
+	let latest: ToolCallRecord | null = null;
+	for (const record of details.currentTools.values()) {
+		latest = record;
+	}
+	return latest;
 }
 
 // ---------------------------------------------------------------------

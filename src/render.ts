@@ -1,10 +1,15 @@
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
-import type { Message } from "@mariozechner/pi-ai";
 import { type Theme, type ThemeColor, getMarkdownTheme } from "@mariozechner/pi-coding-agent";
 import { Box, Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
-import { formatDuration, formatTokens, formatToolCall, formatUsageStats } from "./formatters";
-import { applyThinkingSuffix } from "./pi-args";
-import type { SubagentDetails, SubagentParamsT } from "./types";
+import {
+	applyThinkingSuffix,
+	formatDuration,
+	formatFinalOutput,
+	formatTokens,
+	formatToolCall,
+	formatUsageStats,
+} from "./formatters";
+import { type SubagentDetails, type SubagentParamsT, getCurrentTool } from "./types";
 
 export function renderSubagentCall(args: SubagentParamsT, theme: Theme): Container {
 	const label = args.label ?? "subagent";
@@ -101,8 +106,9 @@ function renderCollapsedBody(details: SubagentDetails, theme: Theme): Container 
 			const formatted = formatToolCall(call.name, call.args, themeFg);
 			container.addChild(new Text(`  ${formatted}`, 0, 0));
 		}
-		if (details.currentTool) {
-			const formatted = formatToolCall(details.currentTool.name, details.currentTool.args, themeFg);
+		const current = getCurrentTool(details);
+		if (current) {
+			const formatted = formatToolCall(current.name, current.args, themeFg);
 			container.addChild(new Text(theme.fg("warning", "▸ ") + formatted, 0, 0));
 		}
 	} else if (details.status === "aborted") {
@@ -122,7 +128,7 @@ function renderCollapsedBody(details: SubagentDetails, theme: Theme): Container 
 		}
 	} else {
 		// Completed - show final message
-		const finalText = getFinalOutput(details.messages);
+		const finalText = formatFinalOutput(details.messages);
 		if (finalText) {
 			container.addChild(new Text(finalText, 0, 0));
 		}
@@ -160,7 +166,7 @@ function renderExpandedBody(details: SubagentDetails, theme: Theme): Container {
 	}
 
 	// Final message as Markdown
-	const finalText = getFinalOutput(details.messages);
+	const finalText = formatFinalOutput(details.messages);
 	if (finalText) {
 		container.addChild(new Markdown(finalText, 0, 0, getMarkdownTheme()));
 	}
@@ -170,16 +176,4 @@ function renderExpandedBody(details: SubagentDetails, theme: Theme): Container {
 	container.addChild(new Text(theme.fg("muted", formatUsageStats(details.usage)), 0, 0));
 
 	return container;
-}
-
-function getFinalOutput(messages: Message[]): string {
-	for (let i = messages.length - 1; i >= 0; i--) {
-		const msg = messages[i];
-		if (msg?.role === "assistant") {
-			for (const part of msg.content) {
-				if (part.type === "text") return part.text;
-			}
-		}
-	}
-	return "";
 }

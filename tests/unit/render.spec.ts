@@ -76,7 +76,17 @@ describe("render", () => {
 					{ name: "grep", args: { pattern: "jwt" } },
 					{ name: "read", args: { path: "src/auth.ts" } },
 				],
-				currentTool: { name: "read", args: { path: "src/middleware.ts" } },
+				currentTools: new Map([
+					[
+						"call_1",
+						{
+							name: "read",
+							toolCallId: "call_1",
+							args: { path: "src/middleware.ts" },
+							startedAt: Date.now(),
+						},
+					],
+				]),
 				usage: {
 					input: 1200,
 					output: 340,

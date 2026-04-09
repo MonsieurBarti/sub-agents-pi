@@ -5,6 +5,7 @@ import { createExecutor } from "../../src/executor";
 import { JobPool } from "../../src/job-pool";
 
 const fakePiPath = path.join(__dirname, "../fixtures/fake-pi.sh");
+const fakePiInterleavedPath = path.join(__dirname, "../fixtures/fake-pi-interleaved.sh");
 
 describe("executor", () => {
 	let pool: JobPool;
@@ -97,6 +98,38 @@ describe("executor", () => {
 		expect(call?.isError).toBe(false);
 	});
 
+	it("matches interleaved tool_execution_end events by toolCallId", async () => {
+		const interleavedExec = createExecutor({
+			pool,
+			piCommandOverride: { command: "/bin/bash", baseArgs: [fakePiInterleavedPath] },
+		});
+		const result = await interleavedExec.execute(
+			"test-interleaved",
+			{ task: "t", system_prompt: "sp" },
+			undefined,
+			undefined,
+			{ cwd: "/tmp", hasUI: false } as ExtensionContext,
+		);
+
+		// Fixture: A.start, B.start, B.end, A.end
+		// Both must be captured with their correct results matched by toolCallId.
+		expect(result.details?.toolCalls).toHaveLength(2);
+
+		const byId = new Map(result.details?.toolCalls.map((c) => [c.toolCallId, c]));
+		const callA = byId.get("call_A");
+		const callB = byId.get("call_B");
+
+		expect(callA?.name).toBe("grep");
+		expect(callA?.args).toEqual({ pattern: "foo" });
+		expect(callA?.result).toEqual({ matches: ["a", "b", "c"] });
+		expect(callA?.isError).toBe(false);
+
+		expect(callB?.name).toBe("read");
+		expect(callB?.args).toEqual({ file_path: "x.ts" });
+		expect(callB?.result).toEqual({ content: "<file B>" });
+		expect(callB?.isError).toBe(false);
+	});
+
 	it("captures usage stats", async () => {
 		const result = await executor.execute(
 			"test-5",
@@ -166,6 +199,68 @@ describe("executor", () => {
 		expect(result.details?.status).toBe("failed");
 		expect(result.details?.error).toBeDefined();
 		expect(pool.get("test-spawn-err")?.status).toBe("failed");
+	});
+
+	it("emits a final onUpdate flush after the child exits", async () => {
+		const updates: Array<{ status: string | undefined; turns: number }> = [];
+		await executor.execute(
+			"test-flush",
+			{ task: "t", system_prompt: "sp" },
+			undefined,
+			(upd) => {
+				updates.push({
+					status: upd.details?.status,
+					turns: upd.details?.usage.turns ?? 0,
+				});
+			},
+			{ cwd: "/tmp", hasUI: false } as ExtensionContext,
+		);
+
+		// The last onUpdate must observe the terminal status, not a stale
+		// "running" snapshot (trailing-edge flush).
+		expect(updates.length).toBeGreaterThan(0);
+		const last = updates[updates.length - 1];
+		expect(last?.status).toBe("completed");
+		expect(last?.turns).toBe(1);
+	});
+
+	it("runs two sub-agents concurrently against a shared pool without crosstalk", async () => {
+		const [r1, r2] = await Promise.all([
+			executor.execute(
+				"concurrent-A",
+				{ task: "task A", system_prompt: "sp", label: "a" },
+				undefined,
+				undefined,
+				{ cwd: "/tmp", hasUI: false } as ExtensionContext,
+			),
+			executor.execute(
+				"concurrent-B",
+				{ task: "task B", system_prompt: "sp", label: "b" },
+				undefined,
+				undefined,
+				{ cwd: "/tmp", hasUI: false } as ExtensionContext,
+			),
+		]);
+
+		expect(r1.details?.status).toBe("completed");
+		expect(r2.details?.status).toBe("completed");
+
+		// Pool holds both jobs, neither overwrote the other.
+		expect(pool.list()).toHaveLength(2);
+		expect(pool.get("concurrent-A")?.status).toBe("completed");
+		expect(pool.get("concurrent-B")?.status).toBe("completed");
+
+		// Tool-call arrays are per-details, not shared.
+		expect(r1.details?.toolCalls).toHaveLength(1);
+		expect(r2.details?.toolCalls).toHaveLength(1);
+
+		// Each tracked its own task text.
+		expect(r1.details?.task).toBe("task A");
+		expect(r2.details?.task).toBe("task B");
+
+		// Each tracked its own usage independently.
+		expect(r1.details?.usage.turns).toBe(1);
+		expect(r2.details?.usage.turns).toBe(1);
 	});
 
 	it("removes abort listener from caller signal after execute resolves", async () => {

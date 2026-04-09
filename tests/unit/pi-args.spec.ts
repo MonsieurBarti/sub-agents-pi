@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { applyThinkingSuffix, buildPiArgs, cleanupTempDir } from "../../src/pi-args";
+import { applyThinkingSuffix } from "../../src/formatters";
+import { buildPiArgs, cleanupTempDir } from "../../src/pi-args";
 
 vi.mock("node:fs", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:fs")>();

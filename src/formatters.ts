@@ -1,5 +1,43 @@
 import * as os from "node:os";
+import type { Message } from "@mariozechner/pi-ai";
 import type { ThemeColor } from "@mariozechner/pi-coding-agent";
+import { THINKING_LEVELS } from "./types";
+
+/**
+ * Append a thinking level suffix to a model id, e.g. "claude-sonnet-4" + "high"
+ * → "claude-sonnet-4:high". Idempotent — if the model already carries a known
+ * thinking suffix, it's returned unchanged. Pure string logic, no I/O.
+ */
+export function applyThinkingSuffix(
+	model: string | undefined,
+	thinking: string | undefined,
+): string | undefined {
+	if (!model || !thinking || thinking === "off") return model;
+	const colonIdx = model.lastIndexOf(":");
+	if (
+		colonIdx !== -1 &&
+		THINKING_LEVELS.includes(model.substring(colonIdx + 1) as (typeof THINKING_LEVELS)[number])
+	) {
+		return model;
+	}
+	return `${model}:${thinking}`;
+}
+
+/**
+ * Walk the message list newest-first and return the most recent assistant
+ * text-content part, or "" if none found.
+ */
+export function formatFinalOutput(messages: readonly Message[]): string {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const msg = messages[i];
+		if (msg?.role === "assistant") {
+			for (const part of msg.content) {
+				if (part.type === "text") return part.text;
+			}
+		}
+	}
+	return "";
+}
 
 export function formatTokens(count: number): string {
 	if (count < 1000) return count.toString();

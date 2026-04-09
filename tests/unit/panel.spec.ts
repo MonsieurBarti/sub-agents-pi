@@ -25,7 +25,7 @@ function makeJob(overrides: Partial<SubagentJob> = {}): SubagentJob {
 			task: "Find stuff",
 			systemPrompt: "You are a scout",
 			toolCalls: [],
-			currentTool: null,
+			currentTools: new Map(),
 			usage: {
 				input: 0,
 				output: 0,
@@ -48,12 +48,15 @@ describe("SubagentPanel", () => {
 	let done: ReturnType<typeof vi.fn>;
 	let panel: SubagentPanel;
 	let tui: { requestRender: ReturnType<typeof vi.fn> };
+	let confirm: ReturnType<typeof vi.fn>;
 
 	beforeEach(() => {
 		pool = new JobPool();
 		done = vi.fn();
 		tui = { requestRender: vi.fn() };
-		panel = new SubagentPanel(pool, tui, fakeTheme as unknown as Theme, done);
+		// Default: confirm always accepts (explicit per-test override when needed)
+		confirm = vi.fn().mockResolvedValue(true);
+		panel = new SubagentPanel(pool, tui, fakeTheme as unknown as Theme, done, confirm);
 	});
 
 	describe("handleInput", () => {
@@ -116,19 +119,38 @@ describe("SubagentPanel", () => {
 			expect(done).not.toHaveBeenCalled();
 		});
 
-		it("kills selected job on k", () => {
+		it("asks for confirmation before killing a running job on k", async () => {
 			const abort = vi.fn();
 			pool.add(makeJob({ abort }));
 
 			panel.handleInput("k");
+			// Kill only fires after the confirmation promise resolves.
+			expect(abort).not.toHaveBeenCalled();
+			await Promise.resolve();
+			await Promise.resolve();
+			expect(confirm).toHaveBeenCalled();
 			expect(abort).toHaveBeenCalled();
 		});
 
-		it("does not kill non-running job on k", () => {
+		it("does NOT kill a running job if the user declines confirmation", async () => {
+			confirm.mockResolvedValueOnce(false);
+			const abort = vi.fn();
+			pool.add(makeJob({ abort }));
+
+			panel.handleInput("k");
+			await Promise.resolve();
+			await Promise.resolve();
+			expect(confirm).toHaveBeenCalled();
+			expect(abort).not.toHaveBeenCalled();
+		});
+
+		it("does not prompt or kill for non-running jobs on k", async () => {
 			const abort = vi.fn();
 			pool.add(makeJob({ status: "completed", abort }));
 
 			panel.handleInput("k");
+			await Promise.resolve();
+			expect(confirm).not.toHaveBeenCalled();
 			expect(abort).not.toHaveBeenCalled();
 		});
 	});

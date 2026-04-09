@@ -1,6 +1,9 @@
+import type { Message } from "@mariozechner/pi-ai";
 import { describe, expect, it } from "vitest";
 import {
+	applyThinkingSuffix,
 	formatDuration,
+	formatFinalOutput,
 	formatTokens,
 	formatToolCall,
 	formatUsageStats,
@@ -104,6 +107,63 @@ describe("formatters", () => {
 		it("formats unknown tools generically", () => {
 			const result = formatToolCall("custom_tool", { foo: "bar" }, fakeTheme);
 			expect(result).toContain("custom_tool");
+		});
+	});
+
+	describe("applyThinkingSuffix", () => {
+		it("returns undefined when model is undefined", () => {
+			expect(applyThinkingSuffix(undefined, "high")).toBeUndefined();
+		});
+
+		it("returns model unchanged when thinking is off or missing", () => {
+			expect(applyThinkingSuffix("claude-sonnet", undefined)).toBe("claude-sonnet");
+			expect(applyThinkingSuffix("claude-sonnet", "off")).toBe("claude-sonnet");
+		});
+
+		it("appends thinking suffix", () => {
+			expect(applyThinkingSuffix("claude-sonnet", "high")).toBe("claude-sonnet:high");
+		});
+
+		it("is idempotent when model already has a valid thinking suffix", () => {
+			expect(applyThinkingSuffix("claude-sonnet:medium", "high")).toBe("claude-sonnet:medium");
+		});
+	});
+
+	describe("formatFinalOutput", () => {
+		it("returns empty string for no messages", () => {
+			expect(formatFinalOutput([])).toBe("");
+		});
+
+		it("returns the last assistant text part", () => {
+			const messages = [
+				{
+					role: "assistant" as const,
+					content: [{ type: "text" as const, text: "first" }],
+				},
+				{
+					role: "user" as const,
+					content: [{ type: "text" as const, text: "middle" }],
+				},
+				{
+					role: "assistant" as const,
+					content: [{ type: "text" as const, text: "last" }],
+				},
+			] as unknown as Message[];
+			expect(formatFinalOutput(messages)).toBe("last");
+		});
+
+		it("skips assistant messages with no text parts", () => {
+			const messages = [
+				{
+					role: "assistant" as const,
+					content: [{ type: "text" as const, text: "first" }],
+				},
+				{
+					role: "assistant" as const,
+					content: [{ type: "tool_use" as const, id: "x", name: "bash", input: {} }],
+				},
+			] as unknown as Message[];
+			expect(formatFinalOutput(messages)).toBe("first");
 		});
 	});
 });
