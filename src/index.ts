@@ -8,11 +8,16 @@ import { SubagentParams, WIDGET_KEY } from "./types";
 import type { SubagentDetails } from "./types";
 import { resetWidgetCache, updateWidget } from "./widget";
 
+export { spawn } from "./spawn";
+export type { SpawnResult } from "./spawn";
+export type { SubagentParamsT } from "./types";
+
 // Module-level singleton — set by registerSubagentExtension(), read by spawn().
 let sharedPool: JobPool | null = null;
 let sharedExecutor: ReturnType<typeof createExecutor> | null = null;
 
 /**
+ * @internal
  * Returns the shared pool and executor. Throws if called before
  * registerSubagentExtension(). Used internally by spawn().
  */

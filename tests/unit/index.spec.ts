@@ -11,6 +11,18 @@ function makeMockPi(): ExtensionAPI {
 	} as unknown as ExtensionAPI;
 }
 
+describe("named exports", () => {
+	it("exports spawn from the package entry point", async () => {
+		const mod = await import("../../src/index");
+		expect(mod.spawn).toBeTypeOf("function");
+	});
+
+	it("exports getSharedState from the package entry point", async () => {
+		const mod = await import("../../src/index");
+		expect(mod.getSharedState).toBeTypeOf("function");
+	});
+});
+
 describe("extension registration", () => {
 	// Depth-related env var leaks between tests; snapshot and restore around
 	// every test so "we're a sub-agent" state doesn't bleed across cases.
