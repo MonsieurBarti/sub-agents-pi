@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.3](https://github.com/MonsieurBarti/sub-agents-pi/compare/sub-agents-pi-v0.2.2...sub-agents-pi-v0.2.3) (2026-04-11)
+
+
+### Features
+
+* add read-only classification to subagent tool prompt guidelines ([1df07d9](https://github.com/MonsieurBarti/sub-agents-pi/commit/1df07d917baff4483ff632b2f7e230c8164cb45b))
+* add read-only classification to subagent tool prompt guidelines ([40d5e3a](https://github.com/MonsieurBarti/sub-agents-pi/commit/40d5e3a35ab1e0bad8da6de44d676024ca0ba4e9))
+
 ## [0.2.2](https://github.com/MonsieurBarti/sub-agents-pi/compare/sub-agents-pi-v0.2.1...sub-agents-pi-v0.2.2) (2026-04-11)
 
 
