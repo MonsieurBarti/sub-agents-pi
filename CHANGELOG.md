@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.1](https://github.com/MonsieurBarti/sub-agents-pi/compare/sub-agents-pi-v0.2.0...sub-agents-pi-v0.2.1) (2026-04-11)
+
+
+### Features
+
+* add module-level singleton and getSharedState() to index ([8beabda](https://github.com/MonsieurBarti/sub-agents-pi/commit/8beabdae5bdc504b18385f6b88d06dfa551a8ea6))
+* add spawn() function for programmatic sub-agent execution ([b680380](https://github.com/MonsieurBarti/sub-agents-pi/commit/b680380bebb3707b5e76cd2386a8d04143a043d3))
+* add spawn() public export for programmatic sub-agent execution ([6d513cf](https://github.com/MonsieurBarti/sub-agents-pi/commit/6d513cffb3e36637d251f02942ffa1dcd056f45f))
+* export spawn, SpawnResult, and SubagentParamsT from package entry ([41fa3e9](https://github.com/MonsieurBarti/sub-agents-pi/commit/41fa3e9737a7ba33a5fcbfc3b24b092d034fc456))
+
 ## [0.2.0](https://github.com/MonsieurBarti/sub-agents-pi/compare/sub-agents-pi-v0.1.0...sub-agents-pi-v0.2.0) (2026-04-09)
 
 
