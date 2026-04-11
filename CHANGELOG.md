@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.2](https://github.com/MonsieurBarti/sub-agents-pi/compare/sub-agents-pi-v0.2.1...sub-agents-pi-v0.2.2) (2026-04-11)
+
+
+### Bug Fixes
+
+* add exports field for nodenext module resolution ([c4d2a82](https://github.com/MonsieurBarti/sub-agents-pi/commit/c4d2a820fbb28f3cccc69ddb8d994d3406f8d8ec))
+* add exports field for nodenext module resolution ([0d587e8](https://github.com/MonsieurBarti/sub-agents-pi/commit/0d587e896d86b3fcc720d323ac0881b94fa852e1))
+
 ## [0.2.1](https://github.com/MonsieurBarti/sub-agents-pi/compare/sub-agents-pi-v0.2.0...sub-agents-pi-v0.2.1) (2026-04-11)
 
 
