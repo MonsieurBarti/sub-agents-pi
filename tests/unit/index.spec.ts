@@ -11,6 +11,18 @@ function makeMockPi(): ExtensionAPI {
 	} as unknown as ExtensionAPI;
 }
 
+describe("named exports", () => {
+	it("exports spawn from the package entry point", async () => {
+		const mod = await import("../../src/index");
+		expect(mod.spawn).toBeTypeOf("function");
+	});
+
+	it("exports getSharedState from the package entry point", async () => {
+		const mod = await import("../../src/index");
+		expect(mod.getSharedState).toBeTypeOf("function");
+	});
+});
+
 describe("extension registration", () => {
 	// Depth-related env var leaks between tests; snapshot and restore around
 	// every test so "we're a sub-agent" state doesn't bleed across cases.
@@ -73,5 +85,27 @@ describe("extension registration", () => {
 		const pi = makeMockPi();
 		registerExtension(pi);
 		expect(pi.registerTool).toHaveBeenCalled();
+	});
+
+	describe("getSharedState()", () => {
+		beforeEach(() => {
+			vi.resetModules();
+		});
+
+		it("throws before registerSubagentExtension() is called", async () => {
+			const mod = await import("../../src/index");
+			expect(() => mod.getSharedState()).toThrow(
+				"spawn() called before registerSubagentExtension()",
+			);
+		});
+
+		it("returns pool and executor after registration", async () => {
+			const mod = await import("../../src/index");
+			const pi = makeMockPi();
+			mod.default(pi);
+			const state = mod.getSharedState();
+			expect(state.pool).toBeDefined();
+			expect(state.executor).toBeDefined();
+		});
 	});
 });
