@@ -74,4 +74,26 @@ describe("extension registration", () => {
 		registerExtension(pi);
 		expect(pi.registerTool).toHaveBeenCalled();
 	});
+
+	describe("getSharedState()", () => {
+		beforeEach(() => {
+			vi.resetModules();
+		});
+
+		it("throws before registerSubagentExtension() is called", async () => {
+			const mod = await import("../../src/index");
+			expect(() => mod.getSharedState()).toThrow(
+				"spawn() called before registerSubagentExtension()",
+			);
+		});
+
+		it("returns pool and executor after registration", async () => {
+			const mod = await import("../../src/index");
+			const pi = makeMockPi();
+			mod.default(pi);
+			const state = mod.getSharedState();
+			expect(state.pool).toBeDefined();
+			expect(state.executor).toBeDefined();
+		});
+	});
 });

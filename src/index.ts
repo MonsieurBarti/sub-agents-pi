@@ -8,6 +8,27 @@ import { SubagentParams, WIDGET_KEY } from "./types";
 import type { SubagentDetails } from "./types";
 import { resetWidgetCache, updateWidget } from "./widget";
 
+// Module-level singleton — set by registerSubagentExtension(), read by spawn().
+let sharedPool: JobPool | null = null;
+let sharedExecutor: ReturnType<typeof createExecutor> | null = null;
+
+/**
+ * Returns the shared pool and executor. Throws if called before
+ * registerSubagentExtension(). Used internally by spawn().
+ */
+export function getSharedState(): {
+	pool: JobPool;
+	executor: ReturnType<typeof createExecutor>;
+} {
+	if (!sharedPool || !sharedExecutor) {
+		throw new Error(
+			"sub-agents-pi: spawn() called before registerSubagentExtension(). " +
+				"Register the extension first.",
+		);
+	}
+	return { pool: sharedPool, executor: sharedExecutor };
+}
+
 /**
  * True when this process was spawned as a sub-agent child (pi sets
  * PI_SUBAGENT_DEPTH on the child env before exec). We use this flag to hide
@@ -34,6 +55,10 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 
 	const pool = new JobPool();
 	const executor = createExecutor({ pool });
+
+	// Publish to module scope for spawn()
+	sharedPool = pool;
+	sharedExecutor = executor;
 
 	interface ExtensionState {
 		lastUiContext: ExtensionContext | null;
