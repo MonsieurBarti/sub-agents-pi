@@ -6,6 +6,7 @@ import { SubagentPanel } from "./panel";
 import { renderSubagentCall, renderSubagentResult } from "./render";
 import { SubagentParams, WIDGET_KEY } from "./types";
 import type { SubagentDetails } from "./types";
+import { checkForUpdates } from "./update-check.js";
 import { resetWidgetCache, updateWidget } from "./widget";
 
 export { spawn } from "./spawn";
@@ -169,7 +170,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	// Session lifecycle
 	// -----------------------------------------------------------------
 
-	pi.on("session_start", (_event, ctx) => {
+	pi.on("session_start", async (_event, ctx) => {
 		state.lastUiContext = ctx;
 		pool.clear();
 		updateWidget(ctx, pool);
@@ -181,6 +182,15 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 
 		if (ctx.hasUI) {
 			ctx.ui.notify("Sub-agents ready (ctrl+shift+s to open panel)", "info");
+		}
+
+		// Check for extension updates
+		const updateInfo = await checkForUpdates(pi);
+		if (updateInfo?.updateAvailable) {
+			ctx.ui.notify(
+				`📦 Update available: ${updateInfo.latestVersion} (you have ${updateInfo.currentVersion}). Run: pi install npm:@the-forge-flow/sub-agents-pi`,
+				"info",
+			);
 		}
 	});
 
