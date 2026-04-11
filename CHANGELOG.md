@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.4](https://github.com/MonsieurBarti/sub-agents-pi/compare/sub-agents-pi-v0.2.3...sub-agents-pi-v0.2.4) (2026-04-11)
+
+
+### Features
+
+* add update notification for sub-agents extension ([2ab80ba](https://github.com/MonsieurBarti/sub-agents-pi/commit/2ab80ba4b6606d5d21668539396800bae1501a5e))
+* add update notification for sub-agents extension ([f2e122c](https://github.com/MonsieurBarti/sub-agents-pi/commit/f2e122c0321453e1d551766b4a9fa413bf9fe633))
+
 ## [0.2.3](https://github.com/MonsieurBarti/sub-agents-pi/compare/sub-agents-pi-v0.2.2...sub-agents-pi-v0.2.3) (2026-04-11)
 
 
