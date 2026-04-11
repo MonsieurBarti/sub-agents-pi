@@ -96,6 +96,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 			"Write a crisp system_prompt — it defines the sub-agent's identity.",
 			"Pick the cheapest model that can do the job.",
 			"Set 'tools' to an allowlist for read-only sub-agents.",
+			"This tool has side effects (spawns a process that can modify files). Run serially, not in parallel with other write tools.",
 		],
 		parameters: SubagentParams,
 
