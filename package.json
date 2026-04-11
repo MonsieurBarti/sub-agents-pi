@@ -1,6 +1,6 @@
 {
 	"name": "@the-forge-flow/sub-agents-pi",
-	"version": "0.2.1",
+	"version": "0.2.2",
 	"description": "PI extension for spawning isolated sub-agents with live TUI spying",
 	"type": "module",
 	"main": "dist/index.js",
