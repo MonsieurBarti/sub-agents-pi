@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.5](https://github.com/MonsieurBarti/sub-agents-pi/compare/sub-agents-pi-v0.2.4...sub-agents-pi-v0.2.5) (2026-04-15)
+
+
+### Features
+
+* make update checks non-blocking ([e4778c3](https://github.com/MonsieurBarti/sub-agents-pi/commit/e4778c32c69a5bcb847f17e2d3f960b9597be293))
+* make update checks non-blocking ([ece2d37](https://github.com/MonsieurBarti/sub-agents-pi/commit/ece2d379fc0340d4a3f4ac7631f5a66fddf87d32))
+
 ## [0.2.4](https://github.com/MonsieurBarti/sub-agents-pi/compare/sub-agents-pi-v0.2.3...sub-agents-pi-v0.2.4) (2026-04-11)
 
 
