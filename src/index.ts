@@ -184,14 +184,15 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 			ctx.ui.notify("Sub-agents ready (ctrl+shift+s to open panel)", "info");
 		}
 
-		// Check for extension updates
-		const updateInfo = await checkForUpdates(pi);
-		if (updateInfo?.updateAvailable) {
-			ctx.ui.notify(
-				`📦 Update available: ${updateInfo.latestVersion} (you have ${updateInfo.currentVersion}). Run: pi install npm:@the-forge-flow/sub-agents-pi`,
-				"info",
-			);
-		}
+		// Check for extension updates (non-blocking)
+		void checkForUpdates(pi).then((info) => {
+			if (info?.updateAvailable) {
+				ctx.ui.notify(
+					`📦 Update available: ${info.latestVersion} (you have ${info.currentVersion}). Run: pi install npm:@the-forge-flow/sub-agents-pi`,
+					"info",
+				);
+			}
+		});
 	});
 
 	pi.on("session_shutdown", () => {
